@@ -9,7 +9,7 @@ Install once on Raspberry Pi OS:
 
 Run from Thonny using the normal Local Python 3 interpreter,
 or from a terminal with:
-    python3 oceanova_pi_ws_bridge_system.py
+    python3 crawler.py
 
 No virtual environment is required.
 
@@ -24,6 +24,7 @@ import asyncio
 import glob
 import json
 import signal
+import socket
 import threading
 import time
 from dataclasses import dataclass
@@ -47,6 +48,23 @@ SERIAL_PORT = "auto"
 SERIAL_BAUD = 115200
 TOPSIDE_WATCHDOG_SECONDS = 0.35
 SYSTEM_STATUS_PERIOD_SECONDS = 1.0
+
+
+def get_primary_ipv4() -> str:
+    """Return the Pi's preferred IPv4 address without hard-coding it."""
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # No packets need to be sent; connect() just lets the OS choose
+        # the preferred outbound interface/address.
+        sock.connect(("8.8.8.8", 80))
+        return sock.getsockname()[0]
+    except OSError:
+        try:
+            return socket.gethostbyname(socket.gethostname())
+        except OSError:
+            return "127.0.0.1"
+    finally:
+        sock.close()
 
 
 class CameraWorker(threading.Thread):
@@ -502,10 +520,14 @@ async def async_main() -> None:
     async def video_entry(websocket):
         await video_handler(websocket, camera)
 
+    pi_ip = get_primary_ipv4()
+
     print()
     print("Oceanova crawler WebSocket bridge")
-    print(f"CONTROL + TELEMETRY: ws://<pi-ip>:{CONTROL_PORT}")
-    print(f"VIDEO JPEG stream:   ws://<pi-ip>:{VIDEO_PORT}")
+    print(f"Pi IPv4 address:      {pi_ip}")
+    print(f"CONTROL + TELEMETRY: ws://{pi_ip}:{CONTROL_PORT}")
+    print(f"VIDEO JPEG stream:   ws://{pi_ip}:{VIDEO_PORT}")
+    print(f"Listening on:         {HOST}")
     print("Press Ctrl+C to stop.")
     print()
 
