@@ -1,0 +1,18 @@
+[Unit]
+Description=Oceanova Crawler Raspberry Pi Bridge
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=oceanovatest
+Group=oceanovatest
+WorkingDirectory=/home/oceanovatest/Desktop
+ExecStart=/usr/bin/python3 /home/oceanovatest/Desktop/crawler.py
+Restart=always
+RestartSec=2
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
