@@ -1,0 +1,100 @@
+import sys
+import ipaddress
+import os
+import math
+import time
+from typing import Optional
+from pathlib import Path
+
+from state import State
+from config import GAMEPAD_DEADZONE, MAX_MOTOR_COMMAND, TELEMETRY_OFFLINE_MS
+
+
+def resource_path(relative_path: str) -> Path:
+    """Gets the windows project directory"""
+    if getattr(sys, "frozen", False):
+        base_path = Path(sys._MEIPASS)
+    else:
+        base_path = Path(__file__).resolve().parent.parent
+
+    return base_path / relative_path
+
+
+def clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def deadzone(v: float) -> float:
+    if abs(v) <= GAMEPAD_DEADZONE:
+        return 0.0
+
+    mag = (abs(v) - GAMEPAD_DEADZONE) / (1.0 - GAMEPAD_DEADZONE)
+
+    return math.copysign(mag, v)
+
+
+def telemetry_age_ms(state: State) -> Optional[float]:
+    if not state.telemetry_time:
+        return None
+
+    return (time.monotonic() - state.telemetry_time) * 1000.0
+
+
+def armed(state: State) -> bool:
+    return bool(state.telemetry.get("armed", False))
+
+
+def telemetry_fresh(state: State) -> bool:
+    age = telemetry_age_ms(state)
+
+    return age is not None and age < TELEMETRY_OFFLINE_MS
+
+
+def can_drive(state: State) -> bool:
+    return (
+        state.control_connected
+        and state.controller_connected
+        and telemetry_fresh(state)
+        and armed(state)
+    )
+
+
+def mix(throttle: float, steering: float) -> tuple[int, int]:
+    left = throttle + steering
+    right = throttle - steering
+    peak = max(1.0, abs(left), abs(right))
+
+    return (
+        int(round((left / peak) * MAX_MOTOR_COMMAND)),
+        int(round((right / peak) * MAX_MOTOR_COMMAND)),
+    )
+
+
+def parse_record_dir(value: str) -> Path:
+    value = os.path.expandvars(value)
+    value = os.path.expanduser(value)
+
+    return Path(value).resolve()
+
+
+def validate_ipv4(ip: str) -> tuple[bool, str | None]:
+    try:
+        ipaddress.IPv4Address(ip)
+        return True, None
+    except ValueError as exc:
+        return False, f"Invalid IPv4 address: {exc}"
+
+
+def validate_record_dir(path_text: str) -> tuple[bool, str | None]:
+    path_text = path_text.strip()
+
+    if not path_text:
+        return False, "Recording directory cannot be empty"
+
+    try:
+        path = Path(path_text)
+        path.mkdir(parents=True, exist_ok=True)
+        return True, None
+
+    except OSError as exc:
+        return False, f"Invalid recording directory: {exc}"
