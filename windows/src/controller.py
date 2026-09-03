@@ -14,8 +14,7 @@ from helpers import clamp, deadzone, can_drive, mix, telemetry_fresh, armed
 
 class DualSense:
 
-    def __init__(self, state: State, connection: ConnectionManager) -> None:
-
+    def __init__(self, connection: ConnectionManager, state: State) -> None:
         self.state = state
         self.connection = connection
 
@@ -29,9 +28,16 @@ class DualSense:
         pygame.joystick.init()
         sdl2_controller.init()
 
+        if not sdl2_controller.init():
+            print("Failed to initialise SDL2 controller subsystem")
+            return
+
+        print("SDL controllers:", sdl2_controller.get_count())
+
         self.scan()
 
     def scan(self) -> None:
+        pygame.event.pump()
 
         if self.pad is not None:
 

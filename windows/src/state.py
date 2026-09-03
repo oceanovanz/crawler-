@@ -1,11 +1,7 @@
-from dataclasses import dataclass, field
-from typing import Optional
-from pathlib import Path
-
 import asyncio
 import numpy as np
-
-from config import DEFAULT_PI_IP, DEFAULT_RECORD_DIR
+from typing import Optional
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -13,12 +9,8 @@ class State:
     # Application
     running: bool = True
 
-    # Connection configuration
-    pi_ip: str = DEFAULT_PI_IP
-
     # Recording status
     recording: bool = False
-    record_dir: Path = field(default_factory=lambda: DEFAULT_RECORD_DIR)
 
     # Connection state
     control_connected: bool = False
@@ -38,6 +30,10 @@ class State:
     steering: float = 0.0
     left: int = 0
     right: int = 0
+
+    # Planning state
+    has_coverage_plan: bool = False
+    coverage_plan: dict = field(default_factory=dict)
 
     # Outgoing control messages
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)

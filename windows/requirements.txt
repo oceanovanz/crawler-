@@ -1,4 +1,5 @@
-pygame==2.6.1
-websockets==16.1.1
+websockets
 opencv-python
 numpy
+PySide6
+qasync

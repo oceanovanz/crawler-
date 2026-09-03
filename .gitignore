@@ -11,4 +11,6 @@ Thumbs.db
 *.log
 **build/
 **dist/
+**install/
+**log/
 *.spec

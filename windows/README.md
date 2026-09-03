@@ -16,44 +16,39 @@ The application provides:
 
 ---
 
-## Code Architecture
+## Code Structure
 
 The application is split into several components with a shared `State` object.
 
 ```text
-                  ┌──────────────────┐
-                  │      main.py     │
-                  │ startup/shutdown │
-                  │ configuration    │
-                  └────────┬─────────┘
-                           │
-            ┌──────────────┼────────────────┐
-            │              │                │
-            ▼              ▼                ▼
-       ┌─────────┐   ┌────────────┐   ┌─────────────┐
-       │  gui.py │   │ controller │   │ connection_ │
-       │         │   │   .py      │   │ manager.py  │
-       └────┬────┘   └─────┬──────┘   └──────┬──────┘
-            │              │                 │
-            │              │                 │
-            └──────────────┼─────────────────┘
-                           ▼
-                    ┌─────────────┐
-                    │   state.py  │
-                    │             │
-                    │ Shared      │
-                    │ application │
-                    │ state       │
-                    └─────────────┘
-                           ▲
-                           │
-                    ┌──────┴──────┐
-                    │  config.py  │
-                    │             │
-                    │ Defaults +  │
-                    │ persistent  │
-                    │ config      │
-                    └─────────────┘
+
+src/
+│
+├── main.py                    # Qt + asyncio startup/shutdown
+│
+├── state.py                   # Shared runtime state
+├── config.py                  # Defaults + persistent config
+│
+├── connection_manager.py      # WebSockets, video, recording
+├── controller.py              # DualSense input
+├── helpers.py                 # Pure utility functions
+│
+└── gui/
+    │
+    ├── __init__.py
+    │
+    ├── main_window.py         # Window + navigation + timers
+    │
+    ├── control_page.py        # Crawler control screen
+    │
+    ├── video_widget.py        # Live video + recording controls
+    │
+    ├── settings_dialog.py     # IP + recording directory
+    │
+    ├── planning_page.py       # Planning controls
+    │
+    └── planning_view.py       # Grid + polygon renderer
+
 ```
 
 ---

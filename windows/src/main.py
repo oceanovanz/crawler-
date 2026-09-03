@@ -1,32 +1,34 @@
-import asyncio
-import pygame
+from __future__ import annotations
 
-import gui
+import asyncio
+import sys
+
+from PySide6.QtWidgets import QApplication
+from qasync import QEventLoop
+
 from state import State
-from controller import DualSense
 from connection_manager import ConnectionManager
+from controller import DualSense
+from gui import MainWindow
 from config import load_user_config
 
 
-def create_state() -> State:
+async def async_main(app: QApplication) -> None:
+
+    state = State()
     user_config = load_user_config()
-    return State(pi_ip=user_config.pi_ip, record_dir=user_config.record_dir)
-
-
-async def main() -> None:
-    pygame.init()
-    gui.init()
-
-    state = create_state()
-    connection = ConnectionManager(state)
-    controller = DualSense(state, connection)
+    connection = ConnectionManager(state, user_config)
+    controller = DualSense(connection, state)
 
     controller.start()
-
     await connection.start()
 
+    window = MainWindow(state, user_config, connection, controller)
+    window.show()
+
     try:
-        await gui.ui(state, controller, connection)
+        while state.running:
+            await asyncio.sleep(0.1)
 
     finally:
         state.running = False
@@ -36,22 +38,24 @@ async def main() -> None:
         except Exception:
             pass
 
-        await connection.stop()
+        try:
+            await connection.shutdown()
+        except Exception:
+            pass
 
         controller.close()
-        pygame.quit()
 
 
-def run() -> None:
-    try:
-        asyncio.run(main())
+def main() -> None:
 
-    except KeyboardInterrupt:
-        pass
+    app = QApplication(sys.argv)
 
-    finally:
-        pygame.quit()
+    loop = QEventLoop(app)
+    asyncio.set_event_loop(loop)
+
+    with loop:
+        loop.run_until_complete(async_main(app))
 
 
 if __name__ == "__main__":
-    run()
+    main()

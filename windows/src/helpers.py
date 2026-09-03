@@ -1,6 +1,4 @@
 import sys
-import ipaddress
-import os
 import math
 import time
 from typing import Optional
@@ -68,33 +66,3 @@ def mix(throttle: float, steering: float) -> tuple[int, int]:
         int(round((left / peak) * MAX_MOTOR_COMMAND)),
         int(round((right / peak) * MAX_MOTOR_COMMAND)),
     )
-
-
-def parse_record_dir(value: str) -> Path:
-    value = os.path.expandvars(value)
-    value = os.path.expanduser(value)
-
-    return Path(value).resolve()
-
-
-def validate_ipv4(ip: str) -> tuple[bool, str | None]:
-    try:
-        ipaddress.IPv4Address(ip)
-        return True, None
-    except ValueError as exc:
-        return False, f"Invalid IPv4 address: {exc}"
-
-
-def validate_record_dir(path_text: str) -> tuple[bool, str | None]:
-    path_text = path_text.strip()
-
-    if not path_text:
-        return False, "Recording directory cannot be empty"
-
-    try:
-        path = Path(path_text)
-        path.mkdir(parents=True, exist_ok=True)
-        return True, None
-
-    except OSError as exc:
-        return False, f"Invalid recording directory: {exc}"

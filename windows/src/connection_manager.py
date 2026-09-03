@@ -7,15 +7,21 @@ from pathlib import Path
 from datetime import datetime
 from websockets.asyncio.client import connect
 
-from config import CONTROL_PORT, VIDEO_PORT, RECONNECT_DELAY_S, COMMAND_RATE_HZ
-
 from state import State
 from helpers import armed, can_drive
+from config import (
+    CONTROL_PORT,
+    VIDEO_PORT,
+    RECONNECT_DELAY_S,
+    COMMAND_RATE_HZ,
+    UserConfiguration,
+)
 
 
 class ConnectionManager:
-    def __init__(self, state: State) -> None:
+    def __init__(self, state: State, user_config: UserConfiguration) -> None:
         self.state = state
+        self.user_config = user_config
 
         self.control_task: asyncio.Task | None = None
         self.video_task: asyncio.Task | None = None
@@ -23,7 +29,7 @@ class ConnectionManager:
         self.ping_task: asyncio.Task | None = None
 
         # recording
-        state.record_dir.mkdir(parents=True, exist_ok=True)
+        user_config.record_dir.mkdir(parents=True, exist_ok=True)
         self.video_writer: cv2.VideoWriter | None = None
         self.recording_path: Path | None = None
 
@@ -32,11 +38,15 @@ class ConnectionManager:
 
     @property
     def control_url(self) -> str:
-        return f"ws://{self.state.pi_ip}:{CONTROL_PORT}"
+        return f"ws://{self.user_config.pi_ip}:{CONTROL_PORT}"
 
     @property
     def video_url(self) -> str:
-        return f"ws://{self.state.pi_ip}:{VIDEO_PORT}"
+        return f"ws://{self.user_config.pi_ip}:{VIDEO_PORT}"
+
+    @property
+    def ip_connected(self) -> bool:
+        return self.state.control_connected
 
     async def start(self) -> None:
         """Start all connection/background tasks."""
@@ -76,11 +86,11 @@ class ConnectionManager:
 
         ip = ip.strip()
 
-        if ip == self.state.pi_ip:
+        if ip == self.user_config.pi_ip:
             return
 
         async with self._connection_lock:
-            print(f"Changing crawler IP: {self.state.pi_ip} -> {ip}")
+            print(f"Changing crawler IP: {self.user_config.pi_ip} -> {ip}")
 
             # Stop sending motors immediately.
             self.state.arm_requested = False
@@ -93,7 +103,7 @@ class ConnectionManager:
             await self._disconnect_connections()
 
             # Update setting.
-            self.state.pi_ip = ip
+            self.user_config.pi_ip = ip
 
             # Start fresh connection tasks.
             self.control_task = asyncio.create_task(self._control_connection())
@@ -108,7 +118,7 @@ class ConnectionManager:
             return None
 
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
-        path = self.state.record_dir / f"snapshot_{timestamp}.jpg"
+        path = self.user_config.record_dir / f"snapshot_{timestamp}.jpg"
 
         success = cv2.imwrite(str(path), frame)
         if not success:
@@ -147,7 +157,7 @@ class ConnectionManager:
 
         height, width = frame.shape[:2]
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = self.state.record_dir / f"video_{timestamp}.mp4"
+        path = self.user_config.record_dir / f"video_{timestamp}.mp4"
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
 
         writer = cv2.VideoWriter(str(path), fourcc, fps=20, frameSize=(width, height))
@@ -212,7 +222,6 @@ class ConnectionManager:
         self.state.steering = 0.0
         self.state.left = 0
         self.state.right = 0
-
         await self.send({"type": "stop", "reason": reason})
 
     async def _control_connection(self) -> None:
@@ -264,16 +273,19 @@ class ConnectionManager:
                                         time.time() - float(sent)
                                     ) * 1000.0
 
+                            elif kind == "plan_result":
+                                self.state.coverage_plan = data
+                                self.state.has_coverage_plan = True
+                                print("Received coverage plan")
+
                             elif kind in ("fault", "error", "ack", "hello"):
                                 print("CONTROL:", data)
-
                                 if kind == "fault":
                                     self.state.left = self.state.right = 0
 
                     async def sender():
                         while self.state.running:
                             message = await self.state.queue.get()
-
                             await ws.send(json.dumps(message, separators=(",", ":")))
 
                     receiver_task = asyncio.create_task(receiver())
@@ -295,7 +307,6 @@ class ConnectionManager:
 
                     for task in done:
                         exc = task.exception()
-
                         if exc:
                             raise exc
 
@@ -372,7 +383,6 @@ class ConnectionManager:
             t0 = time.monotonic()
 
             if self.state.control_connected and armed(self.state):
-
                 left = self.state.left if can_drive() else 0
                 right = self.state.right if can_drive() else 0
 

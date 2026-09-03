@@ -251,7 +251,9 @@ async def control_connection(url: str) -> None:
     while state.running:
         try:
             print("Connecting control:", url)
-            async with connect(url, compression=None, ping_interval=5, ping_timeout=3) as ws:
+            async with connect(
+                url, compression=None, ping_interval=5, ping_timeout=3
+            ) as ws:
                 state.control_connected = True
                 state.arm_requested = False
                 state.left = state.right = 0
@@ -284,11 +286,15 @@ async def control_connection(url: str) -> None:
 
                 async def sender():
                     while state.running:
-                        await ws.send(json.dumps(await state.queue.get(), separators=(",", ":")))
+                        await ws.send(
+                            json.dumps(await state.queue.get(), separators=(",", ":"))
+                        )
 
                 r = asyncio.create_task(receiver())
                 s = asyncio.create_task(sender())
-                done, pending = await asyncio.wait((r, s), return_when=asyncio.FIRST_COMPLETED)
+                done, pending = await asyncio.wait(
+                    (r, s), return_when=asyncio.FIRST_COMPLETED
+                )
                 for task in pending:
                     task.cancel()
                 for task in pending:
@@ -316,13 +322,17 @@ async def video_connection(url: str) -> None:
     while state.running:
         try:
             print("Connecting video:", url)
-            async with connect(url, compression=None, ping_interval=5, ping_timeout=3, max_size=None) as ws:
+            async with connect(
+                url, compression=None, ping_interval=5, ping_timeout=3, max_size=None
+            ) as ws:
                 state.video_connected = True
                 print("VIDEO connected")
                 async for message in ws:
                     if isinstance(message, str):
                         continue
-                    frame = cv2.imdecode(np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    frame = cv2.imdecode(
+                        np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR
+                    )
                     if frame is not None:
                         state.frame = frame
         except asyncio.CancelledError:
@@ -420,7 +430,11 @@ async def ui(pad: DualSense) -> None:
         )
         text(screen, small, status, (245, 15), GOOD if state.control_connected else BAD)
 
-        arm_label = "ARMED - FULL PWM" if armed() else ("ARM REQUESTED" if state.arm_requested else "DISARMED")
+        arm_label = (
+            "ARMED - FULL PWM"
+            if armed()
+            else ("ARM REQUESTED" if state.arm_requested else "DISARMED")
+        )
         arm_colour = WARN if armed() or state.arm_requested else GOOD
         arm_surface = medium.render(arm_label, True, arm_colour)
         screen.blit(arm_surface, (width - arm_surface.get_width() - 18, 12))
@@ -429,7 +443,9 @@ async def ui(pad: DualSense) -> None:
             surf = camera_surface(state.frame)
             sw, sh = surf.get_size()
             scale = min(video_rect.width / sw, video_rect.height / sh)
-            surf = pygame.transform.smoothscale(surf, (int(sw * scale), int(sh * scale)))
+            surf = pygame.transform.smoothscale(
+                surf, (int(sw * scale), int(sh * scale))
+            )
             screen.blit(surf, surf.get_rect(center=video_rect.center))
         else:
             wait = medium.render("WAITING FOR CRAWLER VIDEO", True, MUTED)
@@ -444,22 +460,56 @@ async def ui(pad: DualSense) -> None:
         y += 64
         pitch = state.telemetry.get("pitch")
         roll = state.telemetry.get("roll")
-        text(screen, medium, f"Pitch   {pitch if pitch is not None else '--'}°", (sx, y)); y += 34
-        text(screen, medium, f"Roll    {roll if roll is not None else '--'}°", (sx, y)); y += 54
-        text(screen, small, f"Throttle  {state.throttle:+.2f}", (sx, y)); y += 28
-        text(screen, small, f"Steering  {state.steering:+.2f}", (sx, y)); y += 38
-        text(screen, small, "NO DEADMAN - ARMED STICKS LIVE", (sx, y), WARN); y += 40
-        text(screen, small, "Motor limit: 1000 / 1000", (sx, y), MUTED); y += 28
-        text(screen, small, f"L command: {state.telemetry.get('left_motor', 0):+d}", (sx, y)); y += 28
-        text(screen, small, f"R command: {state.telemetry.get('right_motor', 0):+d}", (sx, y)); y += 28
+        text(
+            screen, medium, f"Pitch   {pitch if pitch is not None else '--'}°", (sx, y)
+        )
+        y += 34
+        text(screen, medium, f"Roll    {roll if roll is not None else '--'}°", (sx, y))
+        y += 54
+        text(screen, small, f"Throttle  {state.throttle:+.2f}", (sx, y))
+        y += 28
+        text(screen, small, f"Steering  {state.steering:+.2f}", (sx, y))
+        y += 38
+        text(screen, small, "NO DEADMAN - ARMED STICKS LIVE", (sx, y), WARN)
+        y += 40
+        text(screen, small, "Motor limit: 1000 / 1000", (sx, y), MUTED)
+        y += 28
+        text(
+            screen,
+            small,
+            f"L command: {state.telemetry.get('left_motor', 0):+d}",
+            (sx, y),
+        )
+        y += 28
+        text(
+            screen,
+            small,
+            f"R command: {state.telemetry.get('right_motor', 0):+d}",
+            (sx, y),
+        )
+        y += 28
         age_text = "--" if age is None else f"{age:.0f} ms"
         rtt_text = "--" if state.rtt_ms is None else f"{state.rtt_ms:.1f} ms"
-        text(screen, small, f"Telemetry: {age_text}", (sx, y), MUTED); y += 28
+        text(screen, small, f"Telemetry: {age_text}", (sx, y), MUTED)
+        y += 28
         text(screen, small, f"RTT: {rtt_text}", (sx, y), MUTED)
 
-        pygame.draw.rect(screen, PANEL, (0, height - bottom_h, width - side_w, bottom_h))
-        text(screen, small, "OPTIONS = ARM   |   CIRCLE / S = STOP   |   ESC / Q = STOP + QUIT", (20, height - 70))
-        text(screen, small, "Left stick = throttle   |   Right stick = steering", (20, height - 38), MUTED)
+        pygame.draw.rect(
+            screen, PANEL, (0, height - bottom_h, width - side_w, bottom_h)
+        )
+        text(
+            screen,
+            small,
+            "OPTIONS = ARM   |   CIRCLE / S = STOP   |   ESC / Q = STOP + QUIT",
+            (20, height - 70),
+        )
+        text(
+            screen,
+            small,
+            "Left stick = throttle   |   Right stick = steering",
+            (20, height - 38),
+            MUTED,
+        )
 
         pygame.display.flip()
         clock.tick(60)
@@ -508,7 +558,9 @@ async def run(pi_ip: str) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--pi", default=DEFAULT_PI_IP, help="crawler Raspberry Pi IPv4 address")
+    parser.add_argument(
+        "--pi", default=DEFAULT_PI_IP, help="crawler Raspberry Pi IPv4 address"
+    )
     args = parser.parse_args()
     try:
         asyncio.run(run(args.pi))
