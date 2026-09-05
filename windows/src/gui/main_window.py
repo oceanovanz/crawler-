@@ -13,6 +13,7 @@ from controller import DualSense
 from helpers import armed
 from config import UserConfiguration
 
+from .popups import UIEvents, ErrorPopup
 from .control_page import ControlPage
 from .planning_page import PlanningPage
 from .settings_dialog import SettingsDialog
@@ -26,6 +27,7 @@ class MainWindow(QMainWindow):
         user_config: UserConfiguration,
         connection: ConnectionManager,
         controller: DualSense,
+        ui_events: UIEvents,
     ) -> None:
         super().__init__()
 
@@ -46,6 +48,10 @@ class MainWindow(QMainWindow):
         self.stack.addWidget(self.main_page)
         self.stack.addWidget(self.planning_page)
         self.setCentralWidget(self.stack)
+
+        # Error popup
+        self.error_popup = ErrorPopup(self)
+        ui_events.error.connect(self.error_popup.show_error)
 
         # Navigation
         self.main_page.settings_requested.connect(self.open_settings)
@@ -86,6 +92,12 @@ class MainWindow(QMainWindow):
 
         self.main_page.update()
 
+    async def shutdown_from_operator(self, reason: str) -> None:
+        await self.connection.stop_motors(reason)
+
+        self.state.running = False
+        self.close()
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         key = event.key()
 
@@ -105,11 +117,11 @@ class MainWindow(QMainWindow):
 
         super().keyPressEvent(event)
 
-    async def shutdown_from_operator(self, reason: str) -> None:
-        await self.connection.stop_motors(reason)
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
 
-        self.state.running = False
-        self.close()
+        if hasattr(self, "error_popup"):
+            self.error_popup.position_popup()
 
     def changeEvent(self, event: QEvent) -> None:
         super().changeEvent(event)

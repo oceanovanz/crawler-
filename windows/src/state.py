@@ -31,9 +31,5 @@ class State:
     left: int = 0
     right: int = 0
 
-    # Planning state
-    has_coverage_plan: bool = False
-    coverage_plan: dict = field(default_factory=dict)
-
     # Outgoing control messages
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)

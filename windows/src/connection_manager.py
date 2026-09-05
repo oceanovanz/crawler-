@@ -19,9 +19,10 @@ from config import (
 
 
 class ConnectionManager:
-    def __init__(self, state: State, user_config: UserConfiguration) -> None:
+    def __init__(self, state: State, user_config: UserConfiguration, ui_events) -> None:
         self.state = state
         self.user_config = user_config
+        self.ui_events = ui_events
 
         self.control_task: asyncio.Task | None = None
         self.video_task: asyncio.Task | None = None
@@ -274,14 +275,21 @@ class ConnectionManager:
                                     ) * 1000.0
 
                             elif kind == "plan_result":
-                                self.state.coverage_plan = data
-                                self.state.has_coverage_plan = True
+                                self.user_config.coverage_plan = data
+                                self.user_config.has_coverage_plan = True
                                 print("Received coverage plan")
 
-                            elif kind in ("fault", "error", "ack", "hello"):
+                            elif kind == "error":
+                                message = data.get("message", "Unknown error")
+                                self.ui_events.error.emit(message)
+
+                            elif kind == "fault":
+                                self.state.left = self.state.right = 0
+                                reason = data.get("reason", "Unknown fault")
+                                self.ui_events.error.emit(reason)
+
+                            elif kind in ("ack", "hello"):
                                 print("CONTROL:", data)
-                                if kind == "fault":
-                                    self.state.left = self.state.right = 0
 
                     async def sender():
                         while self.state.running:

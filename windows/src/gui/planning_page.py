@@ -1,6 +1,8 @@
 from __future__ import annotations
+import asyncio
 
-from PySide6.QtCore import Signal
+
+from PySide6.QtCore import Signal, QTimer
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
@@ -62,7 +64,13 @@ class PlanningPage(QWidget):
         self.user_config = config
         self.view = PlanningView(config.boundary.width, config.boundary.length)
 
-        # --- Initialise values ---
+        self._had_coverage_plan = False
+
+        self.plan_timer = QTimer(self)
+        self.plan_timer.timeout.connect(self._check_plan)
+        self.plan_timer.start(50)
+
+        # --- Initialise screen elements ---
         self.width_input = create_spin_box(value=config.boundary.width, max=10000.0)
         self.width_input.valueChanged.connect(self.update_polygon)
         self.length_input = create_spin_box(value=config.boundary.length, max=10000.0)
@@ -95,8 +103,13 @@ class PlanningPage(QWidget):
             tip="default order when computing routes to order swaths",
         )
 
-        # --- Layout ---
+        self.plan_status = QLabel("No path generated")
+        self.plan_button = QPushButton("Generate Plan")
+        self.plan_button.clicked.connect(
+            lambda: asyncio.ensure_future(self.generate_plan())
+        )
 
+        # --- Layout ---
         boundary_title = QLabel("BOUNDARY")
         boundary_title.setObjectName("sectionTitle")
         boundary_form = QFormLayout()
@@ -120,12 +133,8 @@ class PlanningPage(QWidget):
         path_form.addRow("Path type:", self.path_type)
         path_form.addRow("Route type:", self.route_type)
 
-        plan_button = QPushButton("Generate Plan")
-        plan_button.clicked.connect(self.generate_plan)
-
         save_button = QPushButton("Save Configuration")
         save_button.clicked.connect(self.update_user_config)
-
         back_button = QPushButton("Back to Control")
         back_button.clicked.connect(self.back_requested.emit)
 
@@ -141,7 +150,9 @@ class PlanningPage(QWidget):
         side_layout.addWidget(create_divider())
         side_layout.addWidget(path_title)
         side_layout.addLayout(path_form)
+        side_layout.addWidget(self.plan_status)
         side_layout.addStretch()
+        side_layout.addWidget(self.plan_button)
         side_layout.addWidget(save_button)
         side_layout.addWidget(back_button)
 
@@ -158,7 +169,7 @@ class PlanningPage(QWidget):
         self.update_polygon()
 
     def update_polygon(self) -> None:
-        self.view.set_dimensions(self.width_input.value(), self.length_input.value())
+        self.view.set_boundary(self.width_input.value(), self.length_input.value())
 
     def update_user_config(self) -> None:
         self.user_config.boundary.width = self.width_input.value()
@@ -172,6 +183,13 @@ class PlanningPage(QWidget):
         save_user_config(self.user_config)
 
     async def generate_plan(self) -> None:
+        self.user_config.has_coverage_plan = False
+        self.user_config.coverage_plan = None
+
+        self.plan_status.setText("Generating path...")
+        self.plan_status.setStyleSheet("color: #f4be4c;")
+        self.plan_button.setEnabled(False)
+
         plan_msg = {
             "type": "plan",
             "boundary": {
@@ -190,3 +208,45 @@ class PlanningPage(QWidget):
             },
         }
         await self.state.queue.put(plan_msg)
+
+    def _check_plan(self) -> None:
+        has_plan = self.user_config.has_coverage_plan
+
+        if has_plan and not self._had_coverage_plan:
+
+            coverage_plan = self.user_config.coverage_plan
+            success = coverage_plan.get("success", False)
+
+            if success:
+                planning_time = coverage_plan.get("planning_time")
+                time_sec = (
+                    planning_time.get("sec", 0) + planning_time.get("nanosec", 0) * 1e-9
+                )
+                self.plan_status.setText(f"Path generated ({time_sec:.2f} s)")
+                self.plan_status.setStyleSheet("color: #4caf50;")
+                self._display_coverage_plan(coverage_plan)
+            else:
+                error = coverage_plan.get("error_code", "unknown")
+                self.plan_status.setText(f"Planning failed (error {error})")
+                self.plan_status.setStyleSheet("color: #f55b5b;")
+            self.plan_button.setEnabled(True)
+
+        self._had_coverage_plan = has_plan
+
+    def _display_coverage_plan(self, coverage_plan: dict) -> None:
+        if not coverage_plan:
+            return
+
+        nav_path = coverage_plan.get("nav_path")
+
+        if not nav_path:
+            return
+
+        path = self._extract_nav_path(nav_path)
+        self.planning_view.set_path(path, self.vacuum_width.value())
+
+    def _extract_nav_path(self, nav_path: dict) -> list[tuple[float, float]]:
+        return [
+            (float(pose["position"]["x"]), float(pose["position"]["y"]))
+            for pose in nav_path.get("poses", [])
+        ]

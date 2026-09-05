@@ -66,6 +66,9 @@ class UserConfiguration:
         default_factory=PathPlanningConfiguration
     )
 
+    has_coverage_plan: bool = False
+    coverage_plan: dict = field(default_factory=dict)
+
 
 def load_user_config() -> UserConfiguration:
     config = UserConfiguration()
@@ -77,11 +80,11 @@ def load_user_config() -> UserConfiguration:
         with USER_CONFIG_FILE.open("r", encoding="utf-8") as f:
             data = json.load(f)
 
-        #
         # Connection
         if "pi_ip" in data:
             config.pi_ip = str(data["pi_ip"])
 
+        # Recording
         if "record_dir" in data:
             config.record_dir = Path(data["record_dir"])
 
@@ -94,27 +97,25 @@ def load_user_config() -> UserConfiguration:
 
         # ROV
         rov = data.get("rov", {})
-
         if "robot_width" in rov:
             config.rov.robot_width = float(rov["robot_width"])
-
         if "vacuum_width" in rov:
             config.rov.vacuum_width = float(rov["vacuum_width"])
-
         if "min_turning_radius" in rov:
             config.rov.min_turning_radius = float(rov["min_turning_radius"])
-
         if "linear_curvature_change" in rov:
             config.rov.linear_curvature_change = float(rov["linear_curvature_change"])
 
         # Path planning
         path_planning = data.get("path_planning", {})
-
         if "path_type" in path_planning:
             config.path_planning.path_type = str(path_planning["path_type"])
-
         if "route_type" in path_planning:
             config.path_planning.route_type = str(path_planning["route_type"])
+        if "has_coverage_plan" in path_planning:
+            config.has_coverage_plan = bool(path_planning["has_coverage_plan"])
+        if "coverage_plan" in path_planning:
+            config.coverage_plan = dict(path_planning["coverage_plan"])
 
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print(f"Failed to load user configuration: {exc}")
@@ -143,6 +144,8 @@ def save_user_config(config: UserConfiguration) -> bool:
             "path_planning": {
                 "path_type": config.path_planning.path_type,
                 "route_type": config.path_planning.route_type,
+                "has_coverage_plan": config.has_coverage_plan,
+                "coverage_plan": config.coverage_plan,
             },
         }
 

@@ -9,6 +9,10 @@ from helpers import armed, telemetry_age_ms
 
 from .video_widget import VideoWidget
 
+TEXT_STYLE = "color: white;"
+WARNING_STYLE = "color: #f4be4c; font-weight: bold;"
+ERROR_STYLE = "color: #f55b5b; font-weight: bold;"
+
 
 class ControlPage(QWidget):
 
@@ -74,7 +78,6 @@ class ControlPage(QWidget):
         # --- Right panel ---
         self.arm_label = QLabel()
 
-        self.heading_label = QLabel("HEADING")
         self.yaw_label = QLabel()
         self.pitch_label = QLabel()
         self.roll_label = QLabel()
@@ -82,11 +85,14 @@ class ControlPage(QWidget):
         self.steering_label = QLabel()
 
         self.warning_label = QLabel("NO DEADMAN - ARMED STICKS LIVE")
-        self.warning_label.setStyleSheet("color: #f4be4c")
+        self.warning_label.setStyleSheet(WARNING_STYLE)
 
         self.motor_limit_label = QLabel("Motor limit: 1000 / 1000")
         self.left_motor_label = QLabel()
         self.right_motor_label = QLabel()
+
+        self.ultrasonic_label = QLabel()
+
         self.telemetry_label = QLabel()
         self.rtt_label = QLabel()
 
@@ -100,27 +106,26 @@ class ControlPage(QWidget):
         right_layout.addWidget(self.arm_label)
         right_layout.addSpacing(10)
 
-        right_layout.addWidget(self.heading_label)
         right_layout.addWidget(self.yaw_label)
+        right_layout.addSpacing(5)
 
         right_layout.addWidget(self.pitch_label)
         right_layout.addWidget(self.roll_label)
-
         right_layout.addSpacing(10)
 
         right_layout.addWidget(self.throttle_label)
         right_layout.addWidget(self.steering_label)
-
         right_layout.addSpacing(5)
 
         right_layout.addWidget(self.warning_label)
-
         right_layout.addSpacing(5)
 
         right_layout.addWidget(self.motor_limit_label)
         right_layout.addWidget(self.left_motor_label)
         right_layout.addWidget(self.right_motor_label)
+        right_layout.addSpacing(10)
 
+        right_layout.addWidget(self.ultrasonic_label)
         right_layout.addStretch()
 
         right_layout.addWidget(self.telemetry_label)
@@ -146,8 +151,8 @@ class ControlPage(QWidget):
         central_layout = QHBoxLayout(central)
         central_layout.setContentsMargins(0, 0, 0, 0)
         central_layout.setSpacing(0)
-        central_layout.addWidget(self.video, stretch=3)
-        central_layout.addWidget(right_panel, stretch=1)
+        central_layout.addWidget(self.video, stretch=2.5)
+        central_layout.addWidget(right_panel, stretch=1.5)
 
         # --- Overall layout ---
         layout = QVBoxLayout(self)
@@ -195,30 +200,48 @@ class ControlPage(QWidget):
                 "color: #58d68d; font-size: 18px; font-weight: bold;"
             )
 
-        # Heading
-        yaw = self.state.telemetry.get("yaw")
-        if yaw is None:
-            self.yaw_label.setText("---.-°")
+        imu_online = self.state.telemetry.get("imu_online")
+        if imu_online is None or not imu_online:
+            self.yaw_label.setText("IMU OFFLINE")
+            self.yaw_label.setStyleSheet(ERROR_STYLE)
+
         else:
-            self.yaw_label.setText(f"{yaw:05.1f}°")
+            yaw = self.state.telemetry.get("yaw")
+            self.yaw_label.setText(
+                "HEADING " + f"{yaw:05.1f}°" if yaw is not None else "---.-°"
+            )
+            self.yaw_label.setStyleSheet(TEXT_STYLE)
 
-        pitch = self.state.telemetry.get("pitch")
-        self.pitch_label.setText(f"Pitch   {pitch if pitch is not None else '--'}°")
+            pitch = self.state.telemetry.get("pitch")
+            self.pitch_label.setText(
+                "Pitch " + f"{pitch if pitch is not None else '--'}°"
+            )
 
-        roll = self.state.telemetry.get("roll")
-        self.roll_label.setText(f"Roll    {roll if roll is not None else '--'}°")
+            roll = self.state.telemetry.get("roll")
+            self.roll_label.setText("Roll " + f"{roll if roll is not None else '--'}°")
 
         self.throttle_label.setText(f"Throttle  {self.state.throttle:+.2f}")
-
         self.steering_label.setText(f"Steering  {self.state.steering:+.2f}")
 
         self.left_motor_label.setText(
-            f"L command: " f"{self.state.telemetry.get('left_motor', 0):+d}"
+            "L command: " + f"{self.state.telemetry.get('left_motor', 0):+d}"
+        )
+        self.right_motor_label.setText(
+            "R command: " + f"{self.state.telemetry.get('right_motor', 0):+d}"
         )
 
-        self.right_motor_label.setText(
-            f"R command: " f"{self.state.telemetry.get('right_motor', 0):+d}"
-        )
+        ultrasonic_online = self.state.telemetry.get("ultrasonic_online")
+        if ultrasonic_online is None or not ultrasonic_online:
+            self.ultrasonic_label.setText("Ultrasonic sensor offline")
+            self.ultrasonic_label.setStyleSheet(ERROR_STYLE)
+        else:
+            dist = self.state.telemetry.get("ultrasonic_distance_m")
+            self.ultrasonic_label.setText(
+                "Free distance ahead: " + f"{dist:.2f} m"
+                if dist is not None
+                else "--.- m"
+            )
+            self.ultrasonic_label.setStyleSheet(TEXT_STYLE)
 
         age = telemetry_age_ms(self.state)
         age_text = "--" if age is None else f"{age:.0f} ms"
