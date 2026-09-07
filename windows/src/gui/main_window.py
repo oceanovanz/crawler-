@@ -51,7 +51,7 @@ class MainWindow(QMainWindow):
         # Pages
         self.stack = QStackedWidget()
         self.control_page = ControlPage(state, connection)
-        self.planning_page = PlanningPage(state, user_config)
+        self.planning_page = PlanningPage(state, user_config, ui_events)
         self.stack.addWidget(self.control_page)
         self.stack.addWidget(self.planning_page)
 
@@ -84,14 +84,13 @@ class MainWindow(QMainWindow):
     def create_top_bar(self) -> QWidget:
         top_bar = QWidget()
         top_bar.setObjectName("topBar")
-        top_bar.setFixedHeight(45)
 
         layout = QHBoxLayout(top_bar)
         layout.setContentsMargins(10, 0, 10, 0)
         layout.setSpacing(10)
 
         title = QLabel("OCEANOVA CRAWLER")
-        title.setObjectName("titleLabel")
+        title.setObjectName("title")
 
         # Status indicators
         self.link_status = QLabel()
@@ -100,19 +99,16 @@ class MainWindow(QMainWindow):
 
         # Control Page Button
         self.control_button = QPushButton("🎮")
-        self.control_button.setStyleSheet("font-size: 20px; ")
         self.control_button.setToolTip("Control")
         self.control_button.clicked.connect(self.show_control_page)
 
         # Planning Page Button
         self.plan_button = QPushButton("📋")
-        self.plan_button.setStyleSheet("font-size: 20px; ")
         self.plan_button.setToolTip("Planning")
         self.plan_button.clicked.connect(self.show_planning_page)
 
         # Settings Button
         self.gear_button = QPushButton("⚙")
-        self.gear_button.setStyleSheet("font-size: 20px; ")
         self.gear_button.setToolTip("Settings")
         self.gear_button.clicked.connect(self.open_settings)
 
@@ -161,7 +157,6 @@ class MainWindow(QMainWindow):
 
     @staticmethod
     def set_status(label: QLabel, name: str, connected: bool) -> None:
-        label.setObjectName("statusLabel")
         if connected:
             label.setText(f"● {name}")
             label.setStyleSheet("color: #58d68d;")
@@ -231,13 +226,13 @@ class MainWindow(QMainWindow):
             #topBar {
                 background-color: #104f63;
                 border-bottom: 1px solid #374652;
-                min-height: 48px;
-                max-height: 48px;
+                min-height: 45px;
+                max-height: 45px;
             }
 
             #title {
                 color: #65b9e7;
-                font-size: 18px;
+                font-size: 20px;
                 font-weight: bold;
             }
 
@@ -272,6 +267,7 @@ class MainWindow(QMainWindow):
                 border: 1px solid #374652;
                 border-radius: 5px;
                 padding: 5px 10px;
+                font-size: 20px;
             }
 
             QPushButton:hover {

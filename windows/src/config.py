@@ -1,4 +1,5 @@
 import json
+import numpy as np
 from pathlib import Path
 from dataclasses import dataclass, field
 
@@ -41,6 +42,9 @@ class BoundaryConfiguration:
 
 @dataclass
 class PathPlanningConfiguration:
+    start_pose: np.ndarray = field(
+        default_factory=lambda: np.array([np.nan, np.nan, np.nan], dtype=float)
+    )
     path_type: str = DEFAULT_PATH_TYPE
     route_type: str = DEFAULT_ROUTE_TYPE
     headland_width: float = DEFAULT_HEADLAND_WIDTH
@@ -89,6 +93,10 @@ def load_user_config() -> UserConfiguration:
 
         # Path planning
         path_planning = data.get("path_planning", {})
+        if "start_pose" in path_planning:
+            config.path_planning.start_pose = np.asarray(
+                path_planning["start_pose"], dtype=float
+            )
         if "path_type" in path_planning:
             config.path_planning.path_type = str(path_planning["path_type"])
         if "route_type" in path_planning:
@@ -123,6 +131,7 @@ def save_user_config(config: UserConfiguration) -> bool:
                 "length": config.boundary.length,
             },
             "path_planning": {
+                "start_pose": config.path_planning.start_pose.tolist(),
                 "path_type": config.path_planning.path_type,
                 "route_type": config.path_planning.route_type,
                 "headland_width": config.path_planning.headland_width,
@@ -152,3 +161,13 @@ def save_user_config(config: UserConfiguration) -> bool:
     except OSError as exc:
         print(f"Failed to save user configuration: {exc}")
         return False
+
+
+def has_start_pose(config: UserConfiguration) -> bool:
+    pose = config.path_planning.start_pose
+
+    return (
+        isinstance(pose, np.ndarray)
+        and pose.shape == (3,)
+        and np.all(np.isfinite(pose))
+    )

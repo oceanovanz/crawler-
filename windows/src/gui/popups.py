@@ -1,4 +1,4 @@
-from PySide6.QtCore import Qt, QObject, Signal
+from PySide6.QtCore import Qt, QObject, Signal, QTimer
 from PySide6.QtWidgets import QFrame, QLabel, QPushButton, QHBoxLayout
 
 
@@ -13,6 +13,7 @@ class ErrorPopup(QFrame):
         super().__init__(parent)
 
         self.setObjectName("errorPopup")
+        self.setMinimumWidth(400)
 
         self.message_label = QLabel()
         self.message_label.setWordWrap(True)
@@ -72,6 +73,8 @@ class ErrorPopup(QFrame):
 
         self.raise_()
         self.show()
+
+        QTimer.singleShot(10000, self.close)
 
     def position_popup(self) -> None:
         if self.parentWidget() is None:

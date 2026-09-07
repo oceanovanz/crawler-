@@ -1,20 +1,39 @@
 from __future__ import annotations
+import math
 from typing import Optional
 
-from PySide6.QtCore import Qt, QPointF
+from PySide6.QtCore import Qt, QPointF, Signal
 from PySide6.QtGui import QPainter, QPen, QFont, QColor
 from PySide6.QtWidgets import QWidget
 
 
 class PlanningView(QWidget):
     """
-    Displays the current planning boundary.
+    Displays the current planning boundary and path.
 
     Coordinates are in metres internally and transformed to
     screen coordinates for rendering.
+
+    Coordinate System:
+
+                  +Y
+                  ↑
+                  │
+          (-x,+y) │ (+x,+y)
+                  │
+        ──────────┼──────────→ +X
+                  │
+          (-x,-y) │ (+x,-y)
+                  │
+
     """
 
-    def __init__(self, width_m: float, length_m: float, parent=None) -> None:
+    start_pose_selected = Signal(float, float, float)
+    start_pose_invalid = Signal()
+
+    def __init__(
+        self, width_m: float, length_m: float, start_pose: tuple, parent=None
+    ) -> None:
         super().__init__(parent)
 
         self.boundary_width = width_m
@@ -22,6 +41,11 @@ class PlanningView(QWidget):
         self.path: Optional[list[tuple[float, float]]] = None
         self.path_width: float = 0.5  # TODO: get vacuum width
         self.border_width = None
+
+        self.selecting_start_pose = False
+        self.start_pose_start: QPointF | None = None
+        self.start_pose_current: QPointF | None = None
+        self.start_pose = start_pose
 
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: white;")
@@ -42,16 +66,13 @@ class PlanningView(QWidget):
         self.path = None
         self.update()
 
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    def begin_start_pose_selection(self) -> None:
+        self.selecting_start_pose = True
+        self.start_pose_start = None
+        self.start_pose_current = None
 
-        rect = self.rect()
-        painter.fillRect(rect, Qt.GlobalColor.white)
-
-        self._draw_grid(painter)
-        self._draw_boundary(painter)
-        self._draw_path(painter)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+        self.update()
 
     def _draw_grid(self, painter: QPainter) -> None:
         width = self.width()
@@ -153,6 +174,60 @@ class PlanningView(QWidget):
         for p1, p2 in zip(points[:-1], points[1:]):
             painter.drawLine(p1, p2)
 
+    def _draw_start_pose(self, painter: QPainter) -> None:
+        if self.selecting_start_pose:
+            if self.start_pose_start is None or self.start_pose_current is None:
+                return
+
+            start = self.start_pose_start
+            end = self.start_pose_current
+
+        else:
+            if self.start_pose is None:
+                return
+
+            x, y, yaw = self.start_pose
+            start = self._world_to_screen(x, y)
+            arrow_length = 1.0 * self.scale
+            end = QPointF(
+                start.x() + math.cos(yaw) * arrow_length,
+                start.y() - math.sin(yaw) * arrow_length,
+            )
+
+        pen = QPen(
+            QColor(21, 148, 25),
+            3.0,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenJoinStyle.RoundJoin,
+        )
+
+        painter.setPen(pen)
+        painter.drawLine(start, end)
+
+        # Arrow head
+        angle = math.atan2(-(end.y() - start.y()), end.x() - start.x())
+
+        head_length = 12.0
+        head_angle = math.radians(25.0)
+
+        p1 = QPointF(
+            end.x() - head_length * math.cos(angle - head_angle),
+            end.y() + head_length * math.sin(angle - head_angle),
+        )
+
+        p2 = QPointF(
+            end.x() - head_length * math.cos(angle + head_angle),
+            end.y() + head_length * math.sin(angle + head_angle),
+        )
+
+        painter.drawLine(end, p1)
+        painter.drawLine(end, p2)
+
+        # Start point
+        painter.setBrush(QColor(30, 30, 30))
+        painter.drawEllipse(start, 5.0, 5.0)
+
     def _world_to_screen(self, x: float, y: float) -> QPointF:
         cx = self.width() / 2.0
         cy = self.height() / 2.0
@@ -161,3 +236,104 @@ class PlanningView(QWidget):
         sy = cy - y * self.scale
 
         return QPointF(sx, sy)
+
+    def _screen_to_world(self, point: QPointF) -> tuple[float, float]:
+        cx = self.width() / 2.0
+        cy = self.height() / 2.0
+
+        x = (point.x() - cx) / self.scale
+        y = (cy - point.y()) / self.scale
+
+        return x, y
+
+    def _point_inside_boundary(self, x: float, y: float) -> bool:
+        half_width = self.boundary_width / 2.0
+        half_length = self.boundary_length / 2.0
+
+        return -half_length <= x <= half_length and -half_width <= y <= half_width
+
+    def _finish_start_pose_selection(self) -> None:
+        start = self.start_pose_start
+        end = self.start_pose_current
+
+        if start is None or end is None:
+            return
+
+        dx = end.x() - start.x()
+        dy = end.y() - start.y()
+
+        # Avoid accepting an essentially zero-length drag
+        if math.hypot(dx, dy) < 5.0:
+            return
+
+        world_x, world_y = self._screen_to_world(start)
+
+        # Validate point
+        if not self._point_inside_boundary(world_x, world_y):
+            self.start_pose_start = None
+            self.start_pose_current = None
+            self.start_pose_invalid.emit()
+            return
+
+        world_dx = dx
+        world_dy = -dy  # world coords y=up, Qt coords y=down
+
+        yaw = math.atan2(world_dy, world_dx)
+
+        self.start_pose = (world_x, world_y, yaw)
+        self.selecting_start_pose = False
+        self.start_pose_start = None
+        self.start_pose_current = None
+
+        self.unsetCursor()
+        self.update()
+
+        self.start_pose_selected.emit(world_x, world_y, yaw)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        rect = self.rect()
+        painter.fillRect(rect, Qt.GlobalColor.white)
+
+        self._draw_grid(painter)
+        self._draw_boundary(painter)
+        self._draw_path(painter)
+        self._draw_start_pose(painter)
+
+    def mousePressEvent(self, event) -> None:
+        if self.selecting_start_pose and event.button() == Qt.MouseButton.LeftButton:
+            self.start_pose_start = event.position()
+            self.start_pose_current = event.position()
+            self.update()
+
+            event.accept()
+            return
+
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self.selecting_start_pose and self.start_pose_start is not None:
+            self.start_pose_current = event.position()
+            self.update()
+
+            event.accept()
+            return
+
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:
+        if (
+            self.selecting_start_pose
+            and event.button() == Qt.MouseButton.LeftButton
+            and self.start_pose_start is not None
+        ):
+            self.start_pose_current = event.position()
+
+            self._finish_start_pose_selection()
+
+            event.accept()
+            return
+
+        super().mouseReleaseEvent(event)

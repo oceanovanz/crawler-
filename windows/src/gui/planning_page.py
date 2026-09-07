@@ -1,6 +1,6 @@
 from __future__ import annotations
 import asyncio
-
+import numpy as np
 
 from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
@@ -13,9 +13,11 @@ from PySide6.QtWidgets import (
     QWidget,
     QFrame,
     QComboBox,
+    QMessageBox,
 )
 from state import State
-from config import UserConfiguration, save_user_config
+from config import UserConfiguration, save_user_config, has_start_pose
+from .popups import UIEvents
 from .planning_view import PlanningView
 
 
@@ -55,14 +57,24 @@ def create_divider():
 
 class PlanningPage(QWidget):
 
-    def __init__(self, state: State, config: UserConfiguration, parent=None) -> None:
+    def __init__(
+        self, state: State, config: UserConfiguration, ui_events: UIEvents, parent=None
+    ) -> None:
         super().__init__(parent)
 
         self.state = state
         self.user_config = config
-        self.view = PlanningView(config.boundary.width, config.boundary.length)
+        self.ui_events = ui_events
+        self.view = PlanningView(
+            config.boundary.width,
+            config.boundary.length,
+            config.path_planning.start_pose,
+        )
 
         self._had_coverage_plan = False
+
+        self.view.start_pose_selected.connect(self._start_pose_selected)
+        self.view.start_pose_invalid.connect(self._start_pose_invalid)
 
         self.plan_timer = QTimer(self)
         self.plan_timer.timeout.connect(self._check_plan)
@@ -114,6 +126,19 @@ class PlanningPage(QWidget):
             lambda: asyncio.ensure_future(self.generate_plan())
         )
 
+        self.select_start_pose_button = QPushButton("Select start pose")
+        self.select_start_pose_button.setToolTip(
+            "Click and drag on the map to select the robot's starting position and orientation."
+        )
+        self.select_start_pose_button.clicked.connect(self.start_start_pose_selection)
+
+        self.start_route_button = QPushButton("Start Route")
+        self.start_route_button.setToolTip(
+            "Start the generated coverage route. "
+            "The robot will be switched to AUTO mode."
+        )
+        self.start_route_button.clicked.connect(self.start_route)
+
         # --- Layout ---
         boundary_title = QLabel("BOUNDARY")
         boundary_title.setObjectName("sectionTitle")
@@ -147,6 +172,8 @@ class PlanningPage(QWidget):
         side_layout.addWidget(self.plan_status)
         side_layout.addStretch()
         side_layout.addWidget(self.plan_button)
+        side_layout.addWidget(self.select_start_pose_button)
+        side_layout.addWidget(self.start_route_button)
         side_layout.addWidget(save_button)
 
         side_panel = QWidget()
@@ -168,6 +195,10 @@ class PlanningPage(QWidget):
             self.headland_width.value(),
         )
 
+    def start_start_pose_selection(self) -> None:
+        self.view.begin_start_pose_selection()
+        self.select_start_pose_button.setText("Drag on map...")
+
     def update_user_config(self) -> None:
         self.user_config.boundary.width = self.width_input.value()
         self.user_config.boundary.length = self.length_input.value()
@@ -181,6 +212,12 @@ class PlanningPage(QWidget):
         save_user_config(self.user_config)
 
     async def generate_plan(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit(
+                "No IP connection to robot. Cannot generate route."
+            )
+            return
+
         self.user_config.has_coverage_plan = False
         self.user_config.coverage_plan = None
         self.view.clear_path()
@@ -188,6 +225,8 @@ class PlanningPage(QWidget):
         self.plan_status.setText("Generating path...")
         self.plan_status.setStyleSheet("color: #f4be4c;")
         self.plan_button.setEnabled(False)
+
+        # TODO: maybe add start pose
 
         plan_msg = {
             "type": "plan",
@@ -204,6 +243,55 @@ class PlanningPage(QWidget):
             },
         }
         await self.state.queue.put(plan_msg)
+
+    def start_route(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot start route.")
+            return
+
+        if not has_start_pose(self.user_config):
+            self.ui_events.error.emit(
+                "Starting pose must be selected before the route can start."
+            )
+            return
+
+        if not self.user_config.has_coverage_plan:
+            self.ui_events.error.emit(
+                "A coverage path must be generated before the route can start."
+            )
+            return
+
+        self._show_start_route_confirmation()
+
+    def _show_start_route_confirmation(self) -> None:
+        result = QMessageBox.warning(
+            self,
+            "Start Route",
+            (
+                "Starting the route will switch the robot to AUTO mode "
+                "and begin executing the coverage path.\n\n"
+                "Are you sure you want to continue?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if result == QMessageBox.StandardButton.Yes:
+            self._start_route_confirmed()
+
+    def _start_route_confirmed(self) -> None:
+        start_pose = self.user_config.path_planning.start_pose
+
+        message = {
+            "type": "start_route",
+            "start_pose": {
+                "x": float(start_pose[0]),
+                "y": float(start_pose[1]),
+                "yaw": float(start_pose[2]),
+            },
+        }
+
+        asyncio.create_task(self.state.queue.put(message))
 
     def _check_plan(self) -> None:
         has_plan = self.user_config.has_coverage_plan
@@ -246,3 +334,12 @@ class PlanningPage(QWidget):
             (float(pose["position"]["x"]), float(pose["position"]["y"]))
             for pose in nav_path.get("poses", [])
         ]
+
+    def _start_pose_invalid(self) -> None:
+        self.ui_events.error.emit("Starting position must be inside the boundary.")
+
+    def _start_pose_selected(self, x: float, y: float, yaw: float) -> None:
+        self.user_config.path_planning.start_pose = np.array([x, y, yaw], dtype=float)
+        save_user_config(self.user_config)
+
+        self.select_start_pose_button.setText("Select start pose")
