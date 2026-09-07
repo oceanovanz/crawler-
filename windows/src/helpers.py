@@ -1,21 +1,9 @@
-import sys
 import math
 import time
 from typing import Optional
-from pathlib import Path
 
 from state import State
 from config import GAMEPAD_DEADZONE, MAX_MOTOR_COMMAND, TELEMETRY_OFFLINE_MS
-
-
-def resource_path(relative_path: str) -> Path:
-    """Gets the windows project directory"""
-    if getattr(sys, "frozen", False):
-        base_path = Path(sys._MEIPASS)
-    else:
-        base_path = Path(__file__).resolve().parent.parent
-
-    return base_path / relative_path
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -40,6 +28,13 @@ def telemetry_age_ms(state: State) -> Optional[float]:
 
 def armed(state: State) -> bool:
     return bool(state.telemetry.get("armed", False))
+
+
+def get_mode(state: State) -> str:
+    try:
+        return state.system["mode"]
+    except:
+        return "unknown"
 
 
 def telemetry_fresh(state: State) -> bool:

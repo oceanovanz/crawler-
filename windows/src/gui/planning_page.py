@@ -2,7 +2,7 @@ from __future__ import annotations
 import asyncio
 
 
-from PySide6.QtCore import Signal, QTimer
+from PySide6.QtCore import QTimer
 from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
@@ -55,8 +55,6 @@ def create_divider():
 
 class PlanningPage(QWidget):
 
-    back_requested = Signal()
-
     def __init__(self, state: State, config: UserConfiguration, parent=None) -> None:
         super().__init__(parent)
 
@@ -71,36 +69,43 @@ class PlanningPage(QWidget):
         self.plan_timer.start(50)
 
         # --- Initialise screen elements ---
-        self.width_input = create_spin_box(value=config.boundary.width, max=10000.0)
+        self.width_input = create_spin_box(
+            value=config.boundary.width, min=0.0, max=10000.0
+        )
         self.width_input.valueChanged.connect(self.update_polygon)
-        self.length_input = create_spin_box(value=config.boundary.length, max=10000.0)
+        self.length_input = create_spin_box(
+            value=config.boundary.length, min=0.0, max=10000.0
+        )
         self.length_input.valueChanged.connect(self.update_polygon)
-
-        self.robot_width = create_spin_box(
-            value=config.rov.robot_width, tip="width or robot frame"
-        )
-        self.vacuum_width = create_spin_box(
-            value=config.rov.vacuum_width, tip="width of vacuum head (m)"
-        )
-        self.min_turn_radius = create_spin_box(
-            value=config.rov.min_turning_radius,
-            tip="minimum turning radius for computing paths connecting route swaths (m)",
-        )
-        self.lin_curve_change = create_spin_box(
-            value=config.rov.linear_curvature_change,
-            tip="maximum linear curvature change for computing paths connecting route swaths (1/m²)",
-            suffix=" 1/m²",
-        )
 
         self.path_type = create_combo_box(
             items=["DUBIN", "REEDS_SHEPP"],
             current=config.path_planning.path_type,
-            tip="default type when computing paths to connect routes together using curves",
+            tip="path type to connect routes together using curves",
         )
         self.route_type = create_combo_box(
             items=["BOUSTROPHEDON", "SNAKE", "SPIRAL"],
             current=config.path_planning.route_type,
-            tip="default order when computing routes to order swaths",
+            tip="order when computing routes to order swaths",
+        )
+
+        self.headland_width = create_spin_box(
+            value=config.path_planning.headland_width,
+            min=0.0,
+            max=100.0,
+            tip="border to remove from the zone from coverage planning (used for turning)",
+        )
+        self.headland_width.valueChanged.connect(self.update_polygon)
+
+        self.swath_objective = create_combo_box(
+            items=["LENGTH", "NUMBER", "COVERAGE"],
+            current=config.path_planning.swath_objective,
+            tip="what metric to optimize for when evaluating different path angles",
+        )
+        self.swath_mode = create_combo_box(
+            items=["SET_ANGLE", "BRUTE_FORCE"],
+            current=config.path_planning.swath_mode,
+            tip="how the planner finds the angle for the swaths",
         )
 
         self.plan_status = QLabel("No path generated")
@@ -117,26 +122,18 @@ class PlanningPage(QWidget):
         boundary_form.addRow("Width:", self.width_input)
         boundary_form.addRow("Length:", self.length_input)
 
-        rov_title = QLabel("ROV SPECS")
-        rov_title.setObjectName("sectionTitle")
-        rov_form = QFormLayout()
-        rov_form.setSpacing(12)
-        rov_form.addRow("Robot width:", self.robot_width)
-        rov_form.addRow("Vacuum width:", self.vacuum_width)
-        rov_form.addRow("Minimum turning radius:", self.min_turn_radius)
-        rov_form.addRow("Linear curvature change:", self.lin_curve_change)
-
         path_title = QLabel("PATH PLANNING")
         path_title.setObjectName("sectionTitle")
         path_form = QFormLayout()
         path_form.setSpacing(12)
         path_form.addRow("Path type:", self.path_type)
         path_form.addRow("Route type:", self.route_type)
+        path_form.addRow("Border width:", self.headland_width)
+        path_form.addRow("Swath objective:", self.swath_objective)
+        path_form.addRow("Swath mode:", self.swath_mode)
 
         save_button = QPushButton("Save Configuration")
         save_button.clicked.connect(self.update_user_config)
-        back_button = QPushButton("Back to Control")
-        back_button.clicked.connect(self.back_requested.emit)
 
         side_layout = QVBoxLayout()
         side_layout.setContentsMargins(20, 20, 20, 20)
@@ -145,16 +142,12 @@ class PlanningPage(QWidget):
         side_layout.addWidget(boundary_title)
         side_layout.addLayout(boundary_form)
         side_layout.addWidget(create_divider())
-        side_layout.addWidget(rov_title)
-        side_layout.addLayout(rov_form)
-        side_layout.addWidget(create_divider())
         side_layout.addWidget(path_title)
         side_layout.addLayout(path_form)
         side_layout.addWidget(self.plan_status)
         side_layout.addStretch()
         side_layout.addWidget(self.plan_button)
         side_layout.addWidget(save_button)
-        side_layout.addWidget(back_button)
 
         side_panel = QWidget()
         side_panel.setObjectName("sidePanel")
@@ -169,22 +162,28 @@ class PlanningPage(QWidget):
         self.update_polygon()
 
     def update_polygon(self) -> None:
-        self.view.set_boundary(self.width_input.value(), self.length_input.value())
+        self.view.set_boundary(
+            self.width_input.value(),
+            self.length_input.value(),
+            self.headland_width.value(),
+        )
 
     def update_user_config(self) -> None:
         self.user_config.boundary.width = self.width_input.value()
         self.user_config.boundary.length = self.length_input.value()
-        self.user_config.rov.robot_width = self.robot_width.value()
-        self.user_config.rov.vacuum_width = self.vacuum_width.value()
-        self.user_config.rov.min_turn_radius = self.min_turn_radius.value()
-        self.user_config.rov.lin_curve_change = self.lin_curve_change.value()
         self.user_config.path_planning.path_type = self.path_type.currentText()
         self.user_config.path_planning.route_type = self.route_type.currentText()
+        self.user_config.path_planning.headland_width = self.headland_width.value()
+        self.user_config.path_planning.swath_objective = (
+            self.swath_objective.currentText()
+        )
+        self.user_config.path_planning.swath_mode = self.swath_mode.currentText()
         save_user_config(self.user_config)
 
     async def generate_plan(self) -> None:
         self.user_config.has_coverage_plan = False
         self.user_config.coverage_plan = None
+        self.view.clear_path()
 
         self.plan_status.setText("Generating path...")
         self.plan_status.setStyleSheet("color: #f4be4c;")
@@ -196,15 +195,12 @@ class PlanningPage(QWidget):
                 "width": self.width_input.value(),
                 "length": self.length_input.value(),
             },
-            "rov": {
-                "robot_width": self.robot_width.value(),
-                "vacuum_width": self.vacuum_width.value(),
-                "min_turning_radius": self.min_turn_radius.value(),
-                "linear_curvature_change": self.lin_curve_change.value(),
-            },
             "path_planning": {
                 "path_type": self.path_type.currentText(),
                 "route_type": self.route_type.currentText(),
+                "headland_width": self.headland_width.value(),
+                "swath_objective": self.swath_objective.currentText(),
+                "swath_mode": self.swath_mode.currentText(),
             },
         }
         await self.state.queue.put(plan_msg)
@@ -226,7 +222,7 @@ class PlanningPage(QWidget):
                 self.plan_status.setStyleSheet("color: #4caf50;")
                 self._display_coverage_plan(coverage_plan)
             else:
-                error = coverage_plan.get("error_code", "unknown")
+                error = coverage_plan.get("error", "unknown")
                 self.plan_status.setText(f"Planning failed (error {error})")
                 self.plan_status.setStyleSheet("color: #f55b5b;")
             self.plan_button.setEnabled(True)
@@ -243,7 +239,7 @@ class PlanningPage(QWidget):
             return
 
         path = self._extract_nav_path(nav_path)
-        self.planning_view.set_path(path, self.vacuum_width.value())
+        self.view.set_path(path, 0.5)  # TODO: vacuum width
 
     def _extract_nav_path(self, nav_path: dict) -> list[tuple[float, float]]:
         return [
