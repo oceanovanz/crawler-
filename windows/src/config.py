@@ -41,10 +41,7 @@ class BoundaryConfiguration:
 
 
 @dataclass
-class PathPlanningConfiguration:
-    start_pose: np.ndarray = field(
-        default_factory=lambda: np.array([np.nan, np.nan, np.nan], dtype=float)
-    )
+class NavigationConfiguration:
     path_type: str = DEFAULT_PATH_TYPE
     route_type: str = DEFAULT_ROUTE_TYPE
     headland_width: float = DEFAULT_HEADLAND_WIDTH
@@ -58,12 +55,35 @@ class UserConfiguration:
     record_dir: Path = DEFAULT_RECORD_DIR
 
     boundary: BoundaryConfiguration = field(default_factory=BoundaryConfiguration)
-    path_planning: PathPlanningConfiguration = field(
-        default_factory=PathPlanningConfiguration
-    )
+    navigation: NavigationConfiguration = field(default_factory=NavigationConfiguration)
+    current_pose: np.ndarray = field(default_factory=lambda: np.array([np.nan, np.nan, np.nan], dtype=float))
 
     has_coverage_plan: bool = False
     coverage_plan: dict = field(default_factory=dict)
+
+    def has_pose(self) -> bool:
+        pose = self.current_pose
+        return isinstance(pose, np.ndarray) and pose.shape == (3,) and np.all(np.isfinite(pose))
+
+    def pose_msg(self) -> str:
+        x, y, yaw = self.current_pose
+        return {"type": "current_pose", "pose": {"x": x, "y": y, "yaw": yaw}}
+
+    def plan_msg(self) -> str:
+        return {
+            "type": "plan",
+            "boundary": {
+                "width": self.boundary.width,
+                "length": self.boundary.length,
+            },
+            "navigation": {
+                "path_type": self.navigation.path_type,
+                "route_type": self.navigation.route_type,
+                "headland_width": self.navigation.headland_width,
+                "swath_objective": self.navigation.swath_objective,
+                "swath_mode": self.navigation.swath_mode,
+            },
+        }
 
 
 def load_user_config() -> UserConfiguration:
@@ -92,25 +112,21 @@ def load_user_config() -> UserConfiguration:
             config.boundary.length = float(boundary["length"])
 
         # Path planning
-        path_planning = data.get("path_planning", {})
-        if "start_pose" in path_planning:
-            config.path_planning.start_pose = np.asarray(
-                path_planning["start_pose"], dtype=float
-            )
-        if "path_type" in path_planning:
-            config.path_planning.path_type = str(path_planning["path_type"])
-        if "route_type" in path_planning:
-            config.path_planning.route_type = str(path_planning["route_type"])
-        if "headland_width" in path_planning:
-            config.path_planning.headland_width = float(path_planning["headland_width"])
-        if "swath_objective" in path_planning:
-            config.path_planning.swath_objective = str(path_planning["swath_objective"])
-        if "swath_mode" in path_planning:
-            config.path_planning.swath_mode = str(path_planning["swath_mode"])
-        if "has_coverage_plan" in path_planning:
-            config.has_coverage_plan = bool(path_planning["has_coverage_plan"])
-        if "coverage_plan" in path_planning:
-            config.coverage_plan = dict(path_planning["coverage_plan"])
+        navigation = data.get("navigation", {})
+        if "path_type" in navigation:
+            config.navigation.path_type = str(navigation["path_type"])
+        if "route_type" in navigation:
+            config.navigation.route_type = str(navigation["route_type"])
+        if "headland_width" in navigation:
+            config.navigation.headland_width = float(navigation["headland_width"])
+        if "swath_objective" in navigation:
+            config.navigation.swath_objective = str(navigation["swath_objective"])
+        if "swath_mode" in navigation:
+            config.navigation.swath_mode = str(navigation["swath_mode"])
+        if "has_coverage_plan" in navigation:
+            config.has_coverage_plan = bool(navigation["has_coverage_plan"])
+        if "coverage_plan" in navigation:
+            config.coverage_plan = dict(navigation["coverage_plan"])
 
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print(f"Failed to load user configuration: {exc}")
@@ -130,13 +146,12 @@ def save_user_config(config: UserConfiguration) -> bool:
                 "width": config.boundary.width,
                 "length": config.boundary.length,
             },
-            "path_planning": {
-                "start_pose": config.path_planning.start_pose.tolist(),
-                "path_type": config.path_planning.path_type,
-                "route_type": config.path_planning.route_type,
-                "headland_width": config.path_planning.headland_width,
-                "swath_objective": config.path_planning.swath_objective,
-                "swath_mode": config.path_planning.swath_mode,
+            "navigation": {
+                "path_type": config.navigation.path_type,
+                "route_type": config.navigation.route_type,
+                "headland_width": config.navigation.headland_width,
+                "swath_objective": config.navigation.swath_objective,
+                "swath_mode": config.navigation.swath_mode,
                 "has_coverage_plan": config.has_coverage_plan,
                 "coverage_plan": config.coverage_plan,
             },
@@ -161,13 +176,3 @@ def save_user_config(config: UserConfiguration) -> bool:
     except OSError as exc:
         print(f"Failed to save user configuration: {exc}")
         return False
-
-
-def has_start_pose(config: UserConfiguration) -> bool:
-    pose = config.path_planning.start_pose
-
-    return (
-        isinstance(pose, np.ndarray)
-        and pose.shape == (3,)
-        and np.all(np.isfinite(pose))
-    )

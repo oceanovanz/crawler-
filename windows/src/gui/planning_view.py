@@ -28,12 +28,10 @@ class PlanningView(QWidget):
 
     """
 
-    start_pose_selected = Signal(float, float, float)
-    start_pose_invalid = Signal()
+    pose_selected = Signal(float, float, float)
+    pose_invalid = Signal()
 
-    def __init__(
-        self, width_m: float, length_m: float, start_pose: tuple, parent=None
-    ) -> None:
+    def __init__(self, width_m: float, length_m: float, pose: tuple, parent=None) -> None:
         super().__init__(parent)
 
         self.boundary_width = width_m
@@ -42,10 +40,10 @@ class PlanningView(QWidget):
         self.path_width: float = 0.5  # TODO: get vacuum width
         self.border_width = None
 
-        self.selecting_start_pose = False
-        self.start_pose_start: QPointF | None = None
-        self.start_pose_current: QPointF | None = None
-        self.start_pose = start_pose
+        self.selecting_pose = False
+        self.pose_start: QPointF | None = None
+        self.pose_current: QPointF | None = None
+        self.pose = pose
 
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: white;")
@@ -66,10 +64,10 @@ class PlanningView(QWidget):
         self.path = None
         self.update()
 
-    def begin_start_pose_selection(self) -> None:
-        self.selecting_start_pose = True
-        self.start_pose_start = None
-        self.start_pose_current = None
+    def begin_pose_selection(self) -> None:
+        self.selecting_pose = True
+        self.pose_start = None
+        self.pose_current = None
 
         self.setCursor(Qt.CursorShape.CrossCursor)
         self.update()
@@ -174,19 +172,19 @@ class PlanningView(QWidget):
         for p1, p2 in zip(points[:-1], points[1:]):
             painter.drawLine(p1, p2)
 
-    def _draw_start_pose(self, painter: QPainter) -> None:
-        if self.selecting_start_pose:
-            if self.start_pose_start is None or self.start_pose_current is None:
+    def _draw_pose(self, painter: QPainter) -> None:
+        if self.selecting_pose:
+            if self.pose_start is None or self.pose_current is None:
                 return
 
-            start = self.start_pose_start
-            end = self.start_pose_current
+            start = self.pose_start
+            end = self.pose_current
 
         else:
-            if self.start_pose is None:
+            if self.pose is None:
                 return
 
-            x, y, yaw = self.start_pose
+            x, y, yaw = self.pose
             start = self._world_to_screen(x, y)
             arrow_length = 1.0 * self.scale
             end = QPointF(
@@ -252,9 +250,9 @@ class PlanningView(QWidget):
 
         return -half_length <= x <= half_length and -half_width <= y <= half_width
 
-    def _finish_start_pose_selection(self) -> None:
-        start = self.start_pose_start
-        end = self.start_pose_current
+    def _finish_pose_selection(self) -> None:
+        start = self.pose_start
+        end = self.pose_current
 
         if start is None or end is None:
             return
@@ -270,9 +268,9 @@ class PlanningView(QWidget):
 
         # Validate point
         if not self._point_inside_boundary(world_x, world_y):
-            self.start_pose_start = None
-            self.start_pose_current = None
-            self.start_pose_invalid.emit()
+            self.pose_start = None
+            self.pose_current = None
+            self.pose_invalid.emit()
             return
 
         world_dx = dx
@@ -280,15 +278,15 @@ class PlanningView(QWidget):
 
         yaw = math.atan2(world_dy, world_dx)
 
-        self.start_pose = (world_x, world_y, yaw)
-        self.selecting_start_pose = False
-        self.start_pose_start = None
-        self.start_pose_current = None
+        self.pose = (world_x, world_y, yaw)
+        self.selecting_pose = False
+        self.pose_start = None
+        self.pose_current = None
 
         self.unsetCursor()
         self.update()
 
-        self.start_pose_selected.emit(world_x, world_y, yaw)
+        self.pose_selected.emit(world_x, world_y, yaw)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
@@ -300,12 +298,12 @@ class PlanningView(QWidget):
         self._draw_grid(painter)
         self._draw_boundary(painter)
         self._draw_path(painter)
-        self._draw_start_pose(painter)
+        self._draw_pose(painter)
 
     def mousePressEvent(self, event) -> None:
-        if self.selecting_start_pose and event.button() == Qt.MouseButton.LeftButton:
-            self.start_pose_start = event.position()
-            self.start_pose_current = event.position()
+        if self.selecting_pose and event.button() == Qt.MouseButton.LeftButton:
+            self.pose_start = event.position()
+            self.pose_current = event.position()
             self.update()
 
             event.accept()
@@ -314,8 +312,8 @@ class PlanningView(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:
-        if self.selecting_start_pose and self.start_pose_start is not None:
-            self.start_pose_current = event.position()
+        if self.selecting_pose and self.pose_start is not None:
+            self.pose_current = event.position()
             self.update()
 
             event.accept()
@@ -324,14 +322,10 @@ class PlanningView(QWidget):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:
-        if (
-            self.selecting_start_pose
-            and event.button() == Qt.MouseButton.LeftButton
-            and self.start_pose_start is not None
-        ):
-            self.start_pose_current = event.position()
+        if self.selecting_pose and event.button() == Qt.MouseButton.LeftButton and self.pose_start is not None:
+            self.pose_current = event.position()
 
-            self._finish_start_pose_selection()
+            self._finish_pose_selection()
 
             event.accept()
             return
