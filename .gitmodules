@@ -1,0 +1,3 @@
+[submodule "crawler_pi"]
+	path = crawler_pi
+	url = https://github.com/wikke1/crawler_pi

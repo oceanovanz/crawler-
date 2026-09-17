@@ -19,9 +19,10 @@ from config import (
 
 
 class ConnectionManager:
-    def __init__(self, state: State, user_config: UserConfiguration) -> None:
+    def __init__(self, state: State, user_config: UserConfiguration, ui_events) -> None:
         self.state = state
         self.user_config = user_config
+        self.ui_events = ui_events
 
         self.control_task: asyncio.Task | None = None
         self.video_task: asyncio.Task | None = None
@@ -80,6 +81,14 @@ class ConnectionManager:
 
         self.state.control_connected = False
         self.state.video_connected = False
+
+    async def send_startup_data(self):
+        if self.user_config.has_pose():
+            pose_msg = self.user_config.pose_msg()
+            await self.send(pose_msg)
+
+        plan_msg = self.user_config.plan_msg()
+        await self.send(plan_msg)
 
     async def set_pi_ip(self, ip: str) -> None:
         """Change the crawler IP and reconnect both WebSocket connections."""
@@ -232,9 +241,7 @@ class ConnectionManager:
             try:
                 print("Connecting control:", url)
 
-                async with connect(
-                    url, compression=None, ping_interval=5, ping_timeout=3
-                ) as ws:
+                async with connect(url, compression=None, ping_interval=5, ping_timeout=3) as ws:
 
                     self.state.control_connected = True
                     self.state.arm_requested = False
@@ -267,21 +274,28 @@ class ConnectionManager:
 
                             elif kind == "pong":
                                 sent = data.get("client_time")
-
                                 if isinstance(sent, (int, float)):
-                                    self.state.rtt_ms = (
-                                        time.time() - float(sent)
-                                    ) * 1000.0
+                                    self.state.rtt_ms = (time.time() - float(sent)) * 1000.0
 
                             elif kind == "plan_result":
-                                self.state.coverage_plan = data
-                                self.state.has_coverage_plan = True
-                                print("Received coverage plan")
+                                self.user_config.coverage_plan = data
+                                self.user_config.has_coverage_plan = True
 
-                            elif kind in ("fault", "error", "ack", "hello"):
+                            elif kind == "error":
+                                message = data.get("message", "Unknown error")
+                                self.ui_events.error.emit(message)
+
+                            elif kind == "fault":
+                                self.state.left = self.state.right = 0
+                                reason = data.get("reason", "Unknown fault")
+                                self.ui_events.error.emit(reason)
+
+                            elif kind == "hello":
+                                print("Hello:", data)
+                                await self.send_startup_data()
+
+                            elif kind == "ack":
                                 print("CONTROL:", data)
-                                if kind == "fault":
-                                    self.state.left = self.state.right = 0
 
                     async def sender():
                         while self.state.running:
@@ -348,9 +362,7 @@ class ConnectionManager:
                         if isinstance(message, str):
                             continue
 
-                        frame = cv2.imdecode(
-                            np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR
-                        )
+                        frame = cv2.imdecode(np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR)
 
                         if frame is None:
                             continue

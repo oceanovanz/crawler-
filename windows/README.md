@@ -76,7 +76,7 @@ main.py
 During normal operation:
 
 ```text
-                    State
+              State / UserConfig
                       ▲
                       │
        ┌──────────────┼──────────────┐
@@ -220,23 +220,6 @@ The main responsibilities of each module are:
 | `config.py`             | Defaults, constants and persistent user configuration    |
 | `connection_manager.py` | Raspberry Pi communication, video, recording and control |
 | `controller.py`         | DualSense input and motor command calculation            |
-| `gui.py`                | Pygame interface and user interaction                    |
-| `icons/`                | GUI resources                                            |
+| `gui/`                  | Pyside6 interface and user interaction                   |
 | `requirements.txt`      | Python package dependencies                              |
 
-The intended dependency direction is:
-
-```text
-                    main.py
-                       │
-          ┌────────────┼────────────┐
-          ▼            ▼            ▼
-        gui.py    controller.py  connection_manager.py
-          │            │            │
-          └────────────┼────────────┘
-                       ▼
-                    state.py
-                       ▲
-                       │
-                    config.py
-```

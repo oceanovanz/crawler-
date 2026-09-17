@@ -9,7 +9,7 @@ from qasync import QEventLoop
 from state import State
 from connection_manager import ConnectionManager
 from controller import DualSense
-from gui import MainWindow
+from gui import MainWindow, UIEvents
 from config import load_user_config
 
 
@@ -17,13 +17,16 @@ async def async_main(app: QApplication) -> None:
 
     state = State()
     user_config = load_user_config()
-    connection = ConnectionManager(state, user_config)
+
+    ui_events = UIEvents()
+
+    connection = ConnectionManager(state, user_config, ui_events)
     controller = DualSense(connection, state)
 
     controller.start()
     await connection.start()
 
-    window = MainWindow(state, user_config, connection, controller)
+    window = MainWindow(state, user_config, connection, controller, ui_events)
     window.show()
 
     try:
