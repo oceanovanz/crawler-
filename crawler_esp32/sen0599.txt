@@ -1,0 +1,157 @@
+
+/*
+  Ultrasonic sensor: SEN0599 over UART
+
+  SEN0599 wiring:
+  VIN/VCC -> ESP32 5V/VIN
+  GND     -> ESP32 GND
+  RX      -> GPIO 16
+  TX      -> GPIO 17
+*/
+
+constexpr uint8_t ULTRASONIC_RX_PIN = 16;
+constexpr uint8_t ULTRASONIC_TX_PIN = 17;
+constexpr uint32_t ULTRASONIC_BAUD = 115200;
+constexpr uint32_t ULTRASONIC_PERIOD_MS = 100;  // 10 Hz
+
+HardwareSerial ultrasonicSerial(2);
+
+int ultrasonicDistanceMm = -1;
+bool ultrasonicOnline = false;
+uint32_t lastUltrasonicRequestMs = 0;
+uint32_t ultrasonicRequestTimeMs = 0;
+bool ultrasonicWaitingForResponse = false;
+
+bool testUltrasonic() {
+    // Clear any data that may already be in the UART buffer.
+    while (ultrasonicSerial.available() > 0) {
+        ultrasonicSerial.read();
+    }
+
+    // Request a measurement.
+    ultrasonicSerial.write(0x55);
+
+    // Wait up to 100 ms for a response.
+    const uint32_t startMs = millis();
+
+    while (static_cast<uint32_t>(millis() - startMs) < 100) {
+        if (ultrasonicSerial.available() < 4) {
+            delay(1);
+            continue;
+        }
+
+        uint8_t buffer[4];
+
+        for (int i = 0; i < 4; ++i) {
+            buffer[i] = static_cast<uint8_t>(ultrasonicSerial.read());
+        }
+
+        // Check packet header.
+        if (buffer[0] != 0xFF) {
+            continue;
+        }
+
+        // Check checksum.
+        const uint8_t checksum = static_cast<uint8_t>(buffer[0] + buffer[1] + buffer[2]);
+
+        if (buffer[3] != checksum) {
+            Serial.printf("WARN,ULTRASONIC_CHECKSUM_FAILED,EXPECTED=0x%02X,RECEIVED=0x%02X\n", checksum, buffer[3]);
+            return false;
+        }
+
+        // Decode distance.
+        ultrasonicDistanceMm = (static_cast<int>(buffer[1]) << 8) | static_cast<int>(buffer[2]);
+
+        return true;
+    }
+
+    return false;
+}
+
+void serviceUltrasonic() {
+    const uint32_t now = millis();
+
+    // Request a new measurement
+    if (!ultrasonicWaitingForResponse && static_cast<uint32_t>(now - lastUltrasonicRequestMs) >= ULTRASONIC_PERIOD_MS) {
+        lastUltrasonicRequestMs = now;
+
+        // Remove any old/stale data.
+        while (ultrasonicSerial.available() > 0) {
+            ultrasonicSerial.read();
+        }
+
+        ultrasonicSerial.write(0x55);
+
+        ultrasonicRequestTimeMs = now;
+        ultrasonicWaitingForResponse = true;
+    }
+
+    // Parse incoming response
+    // Response:
+    //   0: 0xFF
+    //   1: distance high byte
+    //   2: distance low byte
+    //   3: checksum
+
+    static uint8_t rxBuffer[4];
+    static uint8_t rxIndex = 0;
+
+    while (ultrasonicSerial.available() > 0) {
+        const uint8_t byte = static_cast<uint8_t>(ultrasonicSerial.read());
+
+        if (rxIndex == 0) {
+            // Look for packet header.
+            if (byte == 0xFF) {
+                rxBuffer[rxIndex++] = byte;
+            }
+            continue;
+        }
+
+        rxBuffer[rxIndex++] = byte;
+
+        if (rxIndex == 4) {
+            rxIndex = 0;
+
+            const uint8_t calculatedChecksum = static_cast<uint8_t>(rxBuffer[0] + rxBuffer[1] + rxBuffer[2]);
+
+            if (rxBuffer[3] == calculatedChecksum) {
+                ultrasonicDistanceMm = (static_cast<int>(rxBuffer[1]) << 8) | static_cast<int>(rxBuffer[2]);
+
+                ultrasonicOnline = true;
+                ultrasonicWaitingForResponse = false;
+            } else {
+                ultrasonicOnline = false;
+                ultrasonicDistanceMm = -1;
+
+                Serial.println("WARN,ULTRASONIC_CHECKSUM_FAILED");
+            }
+        }
+    }
+
+    // Timeout waiting for response
+    if (ultrasonicWaitingForResponse && static_cast<uint32_t>(now - ultrasonicRequestTimeMs) > 50) {
+        ultrasonicWaitingForResponse = false;
+        ultrasonicOnline = false;
+        ultrasonicDistanceMm = -1;
+
+        rxIndex = 0;
+    }
+}
+
+void setup() {
+    ultrasonicSerial.begin(ULTRASONIC_BAUD, SERIAL_8N1, ULTRASONIC_RX_PIN, ULTRASONIC_TX_PIN);
+
+    Serial.printf("OK,ULTRASONIC_UART_STARTED,RX=%u,TX=%u,BAUD=%lu\n", ULTRASONIC_RX_PIN, ULTRASONIC_TX_PIN,
+                  static_cast<unsigned long>(ULTRASONIC_BAUD));
+
+    if (testUltrasonic()) {
+        ultrasonicOnline = true;
+
+        Serial.printf("OK,ULTRASONIC_ONLINE,DISTANCE_MM=%d\n", ultrasonicDistanceMm);
+    } else {
+        ultrasonicOnline = false;
+        ultrasonicDistanceMm = -1;
+
+        Serial.println("WARN,ULTRASONIC_NOT_FOUND_OR_NO_RESPONSE");
+    }
+}

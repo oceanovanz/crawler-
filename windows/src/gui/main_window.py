@@ -151,9 +151,7 @@ class MainWindow(QMainWindow):
     def update_connection_status(self) -> None:
         self.set_status(self.link_status, "IP LINK", self.state.control_connected)
         self.set_status(self.video_status, "VIDEO", self.state.video_connected)
-        self.set_status(
-            self.controller_status, "CONTROLLER", self.state.controller_connected
-        )
+        self.set_status(self.controller_status, "CONTROLLER", self.state.controller_connected)
 
     @staticmethod
     def set_status(label: QLabel, name: str, connected: bool) -> None:
@@ -182,9 +180,7 @@ class MainWindow(QMainWindow):
             return
 
         if key == Qt.Key.Key_P:
-            asyncio.create_task(
-                self.connection.send({"type": "ping", "client_time": time.time()})
-            )
+            asyncio.create_task(self.connection.send({"type": "ping", "client_time": time.time()}))
             return
 
         super().keyPressEvent(event)
@@ -254,7 +250,13 @@ class MainWindow(QMainWindow):
 
             #sectionTitle {
                 color: #65b9e7;
-                font-size: 18px;
+                font-size: 17px;
+                font-weight: bold;
+            }
+
+            QGroupBox::title {
+                color: #65b9e7;
+                font-size: 17px;
                 font-weight: bold;
             }
 
