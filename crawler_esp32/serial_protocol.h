@@ -5,13 +5,11 @@
 
 #define SERIAL_BAUD 115200
 
-void printTelemetry();
-void printImuTelemetry();
-void printSonarTelemetry();
-
 void setupSerialProtocol();
 void serviceSerialProtocol();
 
-void printStatus();
+void printTelemetry();
+void printImuTelemetry();
+void printSonarTelemetry();
 
 #endif

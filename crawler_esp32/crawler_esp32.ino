@@ -6,9 +6,12 @@
 #include "serial_protocol.h"
 #include "sonar.h"
 
-constexpr uint32_t TELEMETRY_PERIOD_MS = 100;
+constexpr uint32_t MOTOR_PERIOD_MS = 100;  // 10 Hz
+constexpr uint32_t IMU_PERIOD_MS = 20;     // 50 Hz
 
-uint32_t lastTelemetryMs = 0;
+static uint32_t lastMotorMs = 0;
+static uint32_t lastImuMs = 0;
+static uint32_t lastSonarMs = 0;
 
 void setup() {
     // Serial command handling
@@ -47,18 +50,30 @@ void setup() {
     Serial.println("READY,DISARMED");
 }
 
+void serviceTelemetry() {
+    const uint32_t now = millis();
+
+    if (static_cast<uint32_t>(now - lastMotorMs) >= MOTOR_PERIOD_MS) {
+        lastMotorMs = now;
+        printTelemetry();
+    }
+
+    if (static_cast<uint32_t>(now - lastImuMs) >= IMU_PERIOD_MS) {
+        lastImuTelemetryMs = now;
+        printImuTelemetry();
+    }
+
+    if (static_cast<uint32_t>(now - lastSonarMs) >= SONAR_PERIOD_MS) {
+        lastSonarMs = now;
+        printSonarTelemetry();
+    }
+}
+
 void loop() {
     serviceSerialProtocol();
     serviceImu();
     // serviceMotors();
     serviceSonar();
-
-    const uint32_t now = millis();
-
-    if (static_cast<uint32_t>(now - lastTelemetryMs) >= TELEMETRY_PERIOD_MS) {
-        lastTelemetryMs = now;
-        printStatus();
-    }
-
+    serviceTelemetry();
     delay(1);
 }

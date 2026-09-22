@@ -12,10 +12,6 @@ static int sonarDistance = -1;
 
 static uint32_t lastSonarMs = 0;
 
-static const uint32_t SONAR_PERIOD_MS = 60;
-
-static const float WAVE_SPEED = 0.343;  // mm / µs
-
 // ---------- Internal helpers ----------
 
 int calculateDistance() {

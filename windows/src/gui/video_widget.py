@@ -19,9 +19,7 @@ class VideoWidget(QWidget):
     and recording. This widget only requests those operations.
     """
 
-    def __init__(
-        self, state: State, connection: ConnectionManager, parent: QWidget | None = None
-    ) -> None:
+    def __init__(self, state: State, connection: ConnectionManager, parent: QWidget | None = None) -> None:
         super().__init__(parent)
 
         self.state = state
@@ -34,7 +32,7 @@ class VideoWidget(QWidget):
             QLabel {
                 background-color: #000000;
                 color: #91a0aa;
-                border: 1px solid #374652;
+                border: 0.5px solid #374652;
             }
             """)
 

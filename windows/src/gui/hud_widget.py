@@ -1,5 +1,5 @@
+from PySide6.QtGui import QPainter, QPen, QColor, QFont, QPolygonF, QPainterPath
 from PySide6.QtCore import Qt, QPointF
-from PySide6.QtGui import QPainter, QPen, QColor, QFont
 from PySide6.QtWidgets import QWidget
 
 
@@ -22,7 +22,7 @@ class ImuHudWidget(QWidget):
         self.online = False
         self.orientation_valid = False
 
-        self.setMinimumSize(150, 150)
+        self.setMinimumSize(420, 130)
 
     def set_data(
         self, yaw: float | None, pitch: float | None, roll: float | None, online: bool, orientation_valid: bool
@@ -40,31 +40,28 @@ class ImuHudWidget(QWidget):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.Antialiasing)
 
-        w = self.width()
         h = self.height()
-
-        size = min(w, h) - 20
-        radius = size / 2.0
-
-        cx = w / 2.0
-        cy = h / 2.0
 
         # Background
         painter.fillRect(self.rect(), QColor("#20252b"))
 
-        # Clip everything to the attitude indicator circle
-        painter.save()
-        circle = self.rect().adjusted(
-            int((w - size) / 2), int((h - size) / 2), -int((w - size) / 2), -int((h - size) / 2)
-        )
-        painter.setClipRegion(circle)
+        # Layout
+        hud_cx = 65
+        hud_cy = h / 2
+        hud_radius = min(58, h / 2 - 10)
 
-        # Horizon
-        pitch_pixels = self.pitch * 3.0  # Pitch scale
-        painter.translate(cx, cy)
-        painter.rotate(-self.roll)  # rotate the entire horizon
-        horizon_y = pitch_pixels  # positive pitch means horizon moves down
-        large = radius * 3.0
+        # --- Artificial horizon ---
+        painter.save()
+
+        path = QPainterPath()
+        path.addEllipse(QPointF(hud_cx, hud_cy), hud_radius, hud_radius)
+        painter.setClipPath(path)
+
+        painter.translate(hud_cx, hud_cy)
+        painter.rotate(-self.roll)  # Roll rotates the horizon
+        pitch_pixels = self.pitch * 2.5  # Pitch moves the horizon
+        horizon_y = pitch_pixels
+        large = hud_radius * 3
 
         # Sky
         painter.setPen(Qt.NoPen)
@@ -75,55 +72,153 @@ class ImuHudWidget(QWidget):
         painter.setBrush(QColor("#4aa85c"))
         painter.drawRect(-large, horizon_y, large * 2, large * 2)
 
-        # Pitch reference lines
-        painter.setPen(QPen(QColor(255, 255, 255, 180), 1))
+        # Horizon line
+        painter.setPen(QPen(QColor("#ffffff"), 1.5))
+        painter.drawLine(QPointF(-large, horizon_y), QPointF(large, horizon_y))
 
-        for pitch_angle in (-20, -10, 10, 20):
-            y = pitch_pixels - pitch_angle * 3.0
-            line_width = 25 if abs(pitch_angle) == 10 else 18
+        # --- Pitch ladder ---
+        painter.setPen(QPen(QColor(255, 255, 255, 90), 1))
+
+        for pitch_angle in range(-20, 21, 5):
+            if pitch_angle == 0:
+                continue
+
+            y = horizon_y - pitch_angle * 2.5
+
+            # Make 10° markings longer.
+            if abs(pitch_angle) % 10 == 0:
+                line_width = 18
+            else:
+                line_width = 10
+
             painter.drawLine(QPointF(-line_width, y), QPointF(line_width, y))
 
         painter.restore()
 
-        # Outer circle
-        painter.setPen(QPen(QColor("#c7d0d9"), 2))
+        # --- Outer attitude circle ---
         painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(int(cx - radius), int(cy - radius), int(size), int(size))
+        painter.setPen(
+            QPen(
+                QColor("#e0e5ea"),
+                1.5,
+            )
+        )
+        painter.drawEllipse(QPointF(hud_cx, hud_cy), hud_radius, hud_radius)
 
-        # Aircraft reference symbol
-        painter.setPen(QPen(QColor("#f0d44a"), 2))
-
-        painter.drawLine(QPointF(cx - 32, cy), QPointF(cx - 8, cy))
-        painter.drawLine(QPointF(cx + 8, cy), QPointF(cx + 32, cy))
-        painter.drawLine(QPointF(cx - 8, cy), QPointF(cx, cy + 5))
-        painter.drawLine(QPointF(cx + 8, cy), QPointF(cx, cy + 5))
-
-        # Roll indicator at top
-        painter.setPen(QPen(QColor("#eeeeee"), 1))
+        # --- Roll markings ---
+        painter.setPen(QPen(QColor("#e0e5ea"), 1))
 
         for roll_angle in (-30, -20, -10, 10, 20, 30):
             painter.save()
-            painter.translate(cx, cy)
+
+            painter.translate(hud_cx, hud_cy)
             painter.rotate(-roll_angle)
-            painter.drawLine(QPointF(0, -radius + 3), QPointF(0, -radius + 10))
+            painter.drawLine(QPointF(0, -hud_radius + 2), QPointF(0, -hud_radius + 8))
             painter.restore()
 
-        # Data text
-        painter.setFont(QFont("Sans", 9))
-        if not self.online:
-            painter.setPen(QColor("#ff5c5c"))
-            text = "IMU OFFLINE"
-            painter.drawText(0, 0, w, h, Qt.AlignCenter, text)
-            return
+        # --- Roll pointer ---
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#ffffff"))
+        triangle = QPolygonF(
+            [
+                QPointF(hud_cx, hud_cy - hud_radius + 2),
+                QPointF(hud_cx - 4, hud_cy - hud_radius + 8),
+                QPointF(hud_cx + 4, hud_cy - hud_radius + 8),
+            ]
+        )
+        painter.drawPolygon(triangle)
 
-        if not self.orientation_valid:
-            painter.setPen(QColor("#f4be4c"))
-            text = "ORIENTATION INVALID"
-            painter.drawText(0, 0, w, h, Qt.AlignCenter, text)
+        # --- Aircraft reference symbol ---
+        painter.setPen(QPen(QColor("#f0d44a"), 2))
 
-        # Bottom-left attitude readout
+        # Left wing
+        painter.drawLine(QPointF(hud_cx - 27, hud_cy), QPointF(hud_cx - 7, hud_cy))
+
+        # Right wing
+        painter.drawLine(QPointF(hud_cx + 7, hud_cy), QPointF(hud_cx + 27, hud_cy))
+
+        # Centre
+        painter.drawLine(QPointF(hud_cx - 7, hud_cy), QPointF(hud_cx, hud_cy + 4))
+        painter.drawLine(QPointF(hud_cx + 7, hud_cy), QPointF(hud_cx, hud_cy + 4))
+
+        # --- R / P / Y values ---
+        text_x = hud_cx + hud_radius + 25
+        label_font = QFont("Sans", 11)
+        value_font = QFont("Sans", 11)
+
+        # Roll
+        painter.setFont(label_font)
         painter.setPen(QColor("#e6e6e6"))
-        painter.setFont(QFont(painter.font().family(), 12))
-        painter.drawText(8, 0 + 30, f"R: {self.roll:.1f}°")
-        painter.drawText(8, cy, f"P: {self.pitch:.1f}°")
-        painter.drawText(8, h - 30, f"Y: {self.yaw:.1f}°")
+        painter.drawText(int(text_x), int(hud_cy - 30), "R:")
+        painter.setFont(value_font)
+        painter.setPen(QColor("#f4c542"))
+        painter.drawText(int(text_x + 24), int(hud_cy - 30), f"{self.roll:.1f}°")
+
+        # Pitch
+        painter.setFont(label_font)
+        painter.setPen(QColor("#e6e6e6"))
+        painter.drawText(int(text_x), int(hud_cy + 5), "P:")
+        painter.setFont(value_font)
+        painter.setPen(QColor("#f4c542"))
+        painter.drawText(int(text_x + 24), int(hud_cy + 5), f"{self.pitch:.1f}°")
+
+        # Yaw
+        painter.setFont(label_font)
+        painter.setPen(QColor("#e6e6e6"))
+        painter.drawText(int(text_x), int(hud_cy + 40), "Y:")
+        painter.setFont(value_font)
+        painter.setPen(QColor("#f4c542"))
+        painter.drawText(int(text_x + 24), int(hud_cy + 40), f"{self.yaw:.1f}°")
+
+        # Status separator
+        separator_x = int(text_x + 95)
+        painter.setPen(QPen(QColor("#39434d"), 1))
+        painter.drawLine(QPointF(separator_x, 10), QPointF(separator_x, h - 10))
+
+        # Status indicators
+        status_x = separator_x + 20
+
+        # IMU Online
+        status_y = hud_cy - 22
+        if self.online:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#58d68d"))
+            painter.drawEllipse(QPointF(status_x, status_y), 5, 5)
+            painter.setPen(QColor("#c7d0d9"))
+            painter.setFont(QFont("Sans", 9))
+            painter.drawText(int(status_x + 14), int(status_y + 4), "IMU Online")
+
+        else:
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(QColor("#ff5c5c"))
+            painter.drawEllipse(QPointF(status_x, status_y), 5, 5)
+            painter.setPen(QColor("#c7d0d9"))
+            painter.setFont(QFont("Sans", 9))
+            painter.drawText(int(status_x + 14), int(status_y + 4), "IMU Offline")
+
+        # Orientation valid
+        status_y += 34
+        painter.setPen(QPen(QColor("#58d68d" if self.orientation_valid else "#f4be4c"), 2))
+        if self.orientation_valid:
+            # Check mark
+            painter.drawLine(
+                QPointF(status_x - 5, status_y),
+                QPointF(status_x - 1, status_y + 4),
+            )
+            painter.drawLine(
+                QPointF(status_x - 1, status_y + 4),
+                QPointF(status_x + 6, status_y - 5),
+            )
+        else:
+            # Warning/exclamation marker
+            painter.drawLine(QPointF(status_x, status_y - 5), QPointF(status_x, status_y + 3))
+            painter.drawPoint(QPointF(status_x, status_y + 7))
+
+        painter.setPen(QColor("#c7d0d9"))
+        painter.setFont(QFont("Sans", 9))
+
+        painter.drawText(
+            int(status_x + 14),
+            int(status_y + 4),
+            "Orientation Valid" if self.orientation_valid else "Orientation Invalid",
+        )

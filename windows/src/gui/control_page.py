@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget, QGroupBox
+from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QGroupBox
 from PySide6.QtCore import Qt
 
 from state import State
@@ -15,6 +15,17 @@ from .video_widget import VideoWidget
 TEXT_STYLE = "color: white;"
 WARNING_STYLE = "color: #f4be4c; font-weight: bold;"
 ERROR_STYLE = "color: #f55b5b; font-weight: bold;"
+
+
+def create_divider():
+    divider = QFrame()
+    divider.setFrameShape(QFrame.Shape.HLine)
+    divider.setFrameShadow(QFrame.Shadow.Sunken)
+    divider.setStyleSheet("""
+        background-color: #333333;
+        max-height: 0.1px;
+    """)
+    return divider
 
 
 class ControlPage(QWidget):
@@ -49,15 +60,14 @@ class ControlPage(QWidget):
         control_group = QGroupBox("CONTROL")
         control_layout = QVBoxLayout(control_group)
         control_layout.setContentsMargins(10, 10, 10, 10)
-        control_layout.setSpacing(6)
+        control_layout.setSpacing(10)
+        row_layout = QHBoxLayout(control_group)
+        row_layout.addWidget(self.arm_label, stretch=1)
+        row_layout.addWidget(self.mode_label, stretch=2)
+        control_layout.addLayout(row_layout)
+        control_layout.addWidget(create_divider())
         control_layout.addWidget(self.throttle_gauge)
         control_layout.addWidget(self.steering_gauge)
-        control_layout.addSpacing(4)
-        row_layout = QHBoxLayout(control_group)
-        row_layout.addWidget(self.arm_label)
-        row_layout.addWidget(self.mode_label)
-        control_layout.addLayout(row_layout)
-        control_layout.addSpacing(4)
         row_layout = QHBoxLayout(control_group)
         row_layout.addWidget(self.left_motor_label, stretch=1)
         row_layout.addWidget(self.right_motor_label, stretch=1)
@@ -68,8 +78,12 @@ class ControlPage(QWidget):
         sonar_layout.setContentsMargins(5, 5, 5, 5)
         sonar_layout.addWidget(self.sonar_radar)
 
+        rate_group = QGroupBox()
+        rate_layout = QHBoxLayout(rate_group)
+        rate_layout.addWidget(self.telemetry_label, stretch=2)
+        rate_layout.addWidget(self.rtt_label, stretch=1)
+
         right_panel = QWidget()
-        right_panel.setObjectName("sidePanel")
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(12, 12, 12, 12)
         right_layout.setSpacing(8)
@@ -77,34 +91,33 @@ class ControlPage(QWidget):
         right_layout.addWidget(control_group)
         right_layout.addWidget(sonar_group)
         right_layout.addStretch()
-        right_layout.addWidget(self.telemetry_label)
-        right_layout.addWidget(self.rtt_label)
+        right_layout.addWidget(rate_group)
 
         # --- Bottom panel ---
-        bottom_panel = QWidget()
-        bottom_panel.setObjectName("bottomPanel")
-
+        bottom_panel = QGroupBox()
         bottom_layout = QVBoxLayout(bottom_panel)
-        bottom_layout.setContentsMargins(20, 12, 20, 12)
-        bottom_layout.addWidget(QLabel("START = ARM   |   CIRCLE / S = STOP   |   ESC / Q = STOP + QUIT"))
+        instructions = QLabel("START = ARM   |   CIRCLE / S = STOP   |   ESC / Q = STOP + QUIT")
+        instructions.setAlignment(Qt.AlignmentFlag.AlignCenter)
         controls = QLabel("Left stick = throttle   |   Right stick = steering")
         controls.setObjectName("muted")
+        controls.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        bottom_layout.addWidget(instructions)
         bottom_layout.addWidget(controls)
 
         # --- Main area ---
         central = QWidget()
-        central_layout = QHBoxLayout(central)
-        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(10, 10, 10, 10)
         central_layout.setSpacing(0)
-        central_layout.addWidget(self.video, stretch=2.5)
-        central_layout.addWidget(right_panel, stretch=1.5)
+        central_layout.addWidget(self.video, stretch=1)
+        central_layout.addWidget(bottom_panel, stretch=0)
 
         # --- Overall layout ---
-        layout = QVBoxLayout(self)
+        layout = QHBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        layout.addWidget(central, stretch=1)
-        layout.addWidget(bottom_panel, stretch=0)
+        layout.addWidget(central, stretch=2.5)
+        layout.addWidget(right_panel, stretch=1.5)
 
         self.update()
 
@@ -150,7 +163,7 @@ class ControlPage(QWidget):
             angle=sonar_data.get("angle"),
             distance=sonar_data.get("distance"),
             online=bool(sonar_data.get("online", False)),
-            timestamp=int(sonar_data.get("timestamp_ms")),
+            timestamp=int(sonar_data.get("timestamp_ms", 0)),
         )
 
         # Connection status

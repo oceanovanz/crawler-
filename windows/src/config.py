@@ -27,11 +27,8 @@ USER_CONFIG_FILE = CONFIG_DIR / "user_configuration.json"
 DEFAULT_BOUNDARY_WIDTH = 0.0
 DEFAULT_BOUNDARY_LENGTH = 0.0
 
-DEFAULT_PATH_TYPE = "REEDS_SHEPP"
 DEFAULT_ROUTE_TYPE = "BOUSTROPHEDON"
-DEFAULT_HEADLAND_WIDTH = 0.0
-DEFAULT_SWATH_OBJECTIVE = "LENGTH"
-DEFAULT_SWATH_MODE = "BRUTE_FORCE"
+DEFAULT_SWEEP_SPACING = 0.5
 
 
 @dataclass
@@ -42,11 +39,8 @@ class BoundaryConfiguration:
 
 @dataclass
 class NavigationConfiguration:
-    path_type: str = DEFAULT_PATH_TYPE
     route_type: str = DEFAULT_ROUTE_TYPE
-    headland_width: float = DEFAULT_HEADLAND_WIDTH
-    swath_objective: str = DEFAULT_SWATH_OBJECTIVE
-    swath_mode: str = DEFAULT_SWATH_MODE
+    sweep_spacing: float = DEFAULT_SWEEP_SPACING
 
 
 @dataclass
@@ -77,11 +71,8 @@ class UserConfiguration:
                 "length": self.boundary.length,
             },
             "navigation": {
-                "path_type": self.navigation.path_type,
                 "route_type": self.navigation.route_type,
-                "headland_width": self.navigation.headland_width,
-                "swath_objective": self.navigation.swath_objective,
-                "swath_mode": self.navigation.swath_mode,
+                "sweep_spacing": self.navigation.sweep_spacing,
             },
         }
 
@@ -113,16 +104,8 @@ def load_user_config() -> UserConfiguration:
 
         # Path planning
         navigation = data.get("navigation", {})
-        if "path_type" in navigation:
-            config.navigation.path_type = str(navigation["path_type"])
         if "route_type" in navigation:
             config.navigation.route_type = str(navigation["route_type"])
-        if "headland_width" in navigation:
-            config.navigation.headland_width = float(navigation["headland_width"])
-        if "swath_objective" in navigation:
-            config.navigation.swath_objective = str(navigation["swath_objective"])
-        if "swath_mode" in navigation:
-            config.navigation.swath_mode = str(navigation["swath_mode"])
         if "has_coverage_plan" in navigation:
             config.has_coverage_plan = bool(navigation["has_coverage_plan"])
         if "coverage_plan" in navigation:
@@ -147,11 +130,7 @@ def save_user_config(config: UserConfiguration) -> bool:
                 "length": config.boundary.length,
             },
             "navigation": {
-                "path_type": config.navigation.path_type,
                 "route_type": config.navigation.route_type,
-                "headland_width": config.navigation.headland_width,
-                "swath_objective": config.navigation.swath_objective,
-                "swath_mode": config.navigation.swath_mode,
                 "has_coverage_plan": config.has_coverage_plan,
                 "coverage_plan": config.coverage_plan,
             },

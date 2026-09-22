@@ -78,34 +78,17 @@ class PlanningPage(QWidget):
         self.length_input = create_spin_box(value=config.boundary.length, min=0.0, max=10000.0)
         self.length_input.valueChanged.connect(self.update_polygon)
 
-        self.path_type = create_combo_box(
-            items=["DUBIN", "REEDS_SHEPP"],
-            current=config.navigation.path_type,
-            tip="path type to connect routes together using curves",
-        )
         self.route_type = create_combo_box(
-            items=["BOUSTROPHEDON", "SNAKE", "SPIRAL"],
+            items=["BOUSTROPHEDON", "SPIRAL"],
             current=config.navigation.route_type,
-            tip="order when computing routes to order swaths",
+            tip="type of coverage route to generate",
         )
 
-        self.headland_width = create_spin_box(
-            value=config.navigation.headland_width,
+        self.sweep_spacing = create_spin_box(
+            value=config.navigation.sweep_spacing,
             min=0.0,
             max=100.0,
-            tip="border to remove from the zone from coverage planning (used for turning)",
-        )
-        self.headland_width.valueChanged.connect(self.update_polygon)
-
-        self.swath_objective = create_combo_box(
-            items=["LENGTH", "NUMBER", "COVERAGE"],
-            current=config.navigation.swath_objective,
-            tip="what metric to optimize for when evaluating different path angles",
-        )
-        self.swath_mode = create_combo_box(
-            items=["SET_ANGLE", "BRUTE_FORCE"],
-            current=config.navigation.swath_mode,
-            tip="how the planner finds the angle for the swaths",
+            tip="metres between scan lines",
         )
 
         self.plan_status = QLabel("No path generated")
@@ -136,11 +119,8 @@ class PlanningPage(QWidget):
         path_title.setObjectName("sectionTitle")
         path_form = QFormLayout()
         path_form.setSpacing(12)
-        path_form.addRow("Path type:", self.path_type)
         path_form.addRow("Route type:", self.route_type)
-        path_form.addRow("Border width:", self.headland_width)
-        path_form.addRow("Swath objective:", self.swath_objective)
-        path_form.addRow("Swath mode:", self.swath_mode)
+        path_form.addRow("Sweep spacing:", self.sweep_spacing)
 
         save_button = QPushButton("Save Configuration")
         save_button.clicked.connect(self.save_user_config)
@@ -174,11 +154,7 @@ class PlanningPage(QWidget):
         self.update_polygon()
 
     def update_polygon(self) -> None:
-        self.view.set_boundary(
-            self.width_input.value(),
-            self.length_input.value(),
-            self.headland_width.value(),
-        )
+        self.view.set_boundary(self.width_input.value(), self.length_input.value())
 
     def begin_pose_selection(self) -> None:
         self.view.begin_pose_selection()
@@ -191,11 +167,7 @@ class PlanningPage(QWidget):
     def update_user_config(self) -> None:
         self.user_config.boundary.width = self.width_input.value()
         self.user_config.boundary.length = self.length_input.value()
-        self.user_config.navigation.path_type = self.path_type.currentText()
         self.user_config.navigation.route_type = self.route_type.currentText()
-        self.user_config.navigation.headland_width = self.headland_width.value()
-        self.user_config.navigation.swath_objective = self.swath_objective.currentText()
-        self.user_config.navigation.swath_mode = self.swath_mode.currentText()
 
     def generate_plan(self) -> None:
         if not self.state.control_connected:
@@ -213,7 +185,7 @@ class PlanningPage(QWidget):
         self.plan_timer.start(50)
 
         self.update_user_config()
-        plan_msg = self.user_config.navigation.plan_msg()
+        plan_msg = self.user_config.plan_msg()
         asyncio.create_task(self.state.queue.put(plan_msg))
 
     def start_route(self) -> None:
@@ -248,7 +220,7 @@ class PlanningPage(QWidget):
             self._start_route_confirmed()
 
     def _start_route_confirmed(self) -> None:
-        message = {"type": "start_route", "plan_id": self.user_config.coverage_plan["plan_id"]}
+        message = {"type": "start_route"}
         asyncio.create_task(self.state.queue.put(message))
 
     def _check_plan(self) -> None:

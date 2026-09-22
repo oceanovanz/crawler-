@@ -210,7 +210,7 @@ class MainWindow(QMainWindow):
 
         self.setStyleSheet("""
             QMainWindow {
-                background-color: #0c1116;
+                background-color: #161e26;
             }
 
             QWidget {
@@ -221,7 +221,6 @@ class MainWindow(QMainWindow):
 
             #topBar {
                 background-color: #104f63;
-                border-bottom: 1px solid #374652;
                 min-height: 45px;
                 max-height: 45px;
             }
@@ -232,31 +231,19 @@ class MainWindow(QMainWindow):
                 font-weight: bold;
             }
 
-            #sidePanel {
-                background-color: #161e26;
-                border-left: 1px solid #374652;
-            }
-
-            #bottomPanel {
-                background-color: #161e26;
-                border-top: 1px solid #374652;
-                min-height: 75px;
-                max-height: 105px;
-            }
-
             #muted {
                 color: #919faa;
             }
 
             #sectionTitle {
                 color: #65b9e7;
-                font-size: 17px;
+                font-size: 16px;
                 font-weight: bold;
             }
 
-            QGroupBox::title {
+            QGroupBox {
                 color: #65b9e7;
-                font-size: 17px;
+                font-size: 16px;
                 font-weight: bold;
             }
 

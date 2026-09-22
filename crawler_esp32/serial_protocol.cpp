@@ -15,24 +15,6 @@ static size_t commandLength = 0;
 
 // ---------- Internal helpers ----------
 
-void printTelemetry() {
-    // T,<timestamp>,<left_motor>,<right_motor>,<armed>,
-    Serial.printf("T,%lu,%d,%d,%d\n", static_cast<unsigned long>(millis()), getCurrentLeft(), getCurrentRight(),
-                  isArmed() ? 1 : 0);
-}
-
-void printImuTelemetry() {
-    // I,<timestamp>,<imu_online>,<orientation_valid>,<yaw>,<pitch>,<roll>
-    Serial.printf("I,%lu,%d,%d,%.2f,%.2f,%.2f\n", static_cast<unsigned long>(millis()), isImuOnline() ? 1 : 0,
-                  isOrientationValid() ? 1 : 0, getYaw(), getPitch(), getRoll());
-}
-
-void printSonarTelemetry() {
-    // S,<timestamp>,<sonar_online>,<angle>,<distance>
-    Serial.printf("S,%lu,%d,%d,%d\n", static_cast<unsigned long>(millis()), isSonarOnline() ? 1 : 0,
-                  getSonarAngle(), getSonarDistance());
-}
-
 static void handleCommand(const char* line) {
     // ARM
     if (strcmp(line, "ARM") == 0) {
@@ -103,8 +85,20 @@ void serviceSerialProtocol() {
     }
 }
 
-void printStatus() {
-    printTelemetry();
-    printImuTelemetry();
-    printSonarTelemetry();
+void printTelemetry() {
+    // T,<timestamp>,<left_motor>,<right_motor>,<armed>,
+    Serial.printf("T,%lu,%d,%d,%d\n", static_cast<unsigned long>(millis()), getCurrentLeft(), getCurrentRight(),
+                  isArmed() ? 1 : 0);
+}
+
+void printImuTelemetry() {
+    // I,<timestamp>,<imu_online>,<orientation_valid>,<yaw>,<pitch>,<roll>
+    Serial.printf("I,%lu,%d,%d,%.2f,%.2f,%.2f\n", static_cast<unsigned long>(millis()), isImuOnline() ? 1 : 0,
+                  isOrientationValid() ? 1 : 0, getYaw(), getPitch(), getRoll());
+}
+
+void printSonarTelemetry() {
+    // S,<timestamp>,<sonar_online>,<angle>,<distance>
+    Serial.printf("S,%lu,%d,%d,%d\n", static_cast<unsigned long>(millis()), isSonarOnline() ? 1 : 0, getSonarAngle(),
+                  getSonarDistance());
 }

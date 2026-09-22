@@ -48,10 +48,9 @@ class PlanningView(QWidget):
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: white;")
 
-    def set_boundary(self, width_m: float, length_m: float, border: float) -> None:
+    def set_boundary(self, width_m: float, length_m: float) -> None:
         self.boundary_width = width_m
         self.boundary_length = length_m
-        self.border_width = border
         self.clear_path()
         self.update()
 

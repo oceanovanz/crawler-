@@ -54,22 +54,6 @@ For I2C operation, P0/PS0 and P1/PS1 should not be pulled high.
 | HC-SR04 TRIG |     GPIO 5 |
 | HC-SR04 ECHO |    GPIO 18 |
 
-**Important:** HC-SR04 ECHO is a 5 V signal. The ESP32 GPIO is 3.3 V only, so ECHO must be level shifted before connecting it to GPIO 18.
-
-A simple resistor divider can be used:
-
-```text
-HC-SR04 ECHO
-     |
-    1 kΩ
-     |
-     +------ ESP32 GPIO 18
-     |
-    2 kΩ
-     |
-    GND
-```
-
 The servo and ESP32 must share a common ground. The servo should have an appropriate 5 V supply rather than relying on the ESP32 3.3 V rail.
 
 ## Software setup

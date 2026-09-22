@@ -40,7 +40,7 @@ class SonarWidget(QWidget):
             return
 
         # Calculate revolutions per second
-        if int(angle) == 90 and timestamp is not None:
+        if int(angle) == 90 and timestamp > 0:
             if self.rev_start_time is not None:
                 dt = (timestamp - self.rev_start_time) / 1000
                 self.revolution_periods.append(dt)

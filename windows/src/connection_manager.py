@@ -292,7 +292,7 @@ class ConnectionManager:
 
                             elif kind == "hello":
                                 print("Hello:", data)
-                                await self.send_startup_data()
+                                # await self.send_startup_data()
 
                             elif kind == "ack":
                                 print("CONTROL:", data)
