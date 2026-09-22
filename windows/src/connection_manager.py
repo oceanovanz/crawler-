@@ -82,14 +82,6 @@ class ConnectionManager:
         self.state.control_connected = False
         self.state.video_connected = False
 
-    async def send_startup_data(self):
-        if self.user_config.has_pose():
-            pose_msg = self.user_config.pose_msg()
-            await self.send(pose_msg)
-
-        plan_msg = self.user_config.plan_msg()
-        await self.send(plan_msg)
-
     async def set_pi_ip(self, ip: str) -> None:
         """Change the crawler IP and reconnect both WebSocket connections."""
 
@@ -277,10 +269,6 @@ class ConnectionManager:
                                 if isinstance(sent, (int, float)):
                                     self.state.rtt_ms = (time.time() - float(sent)) * 1000.0
 
-                            elif kind == "plan_result":
-                                self.user_config.coverage_plan = data
-                                self.user_config.has_coverage_plan = True
-
                             elif kind == "error":
                                 message = data.get("message", "Unknown error")
                                 self.ui_events.error.emit(message)
@@ -292,7 +280,6 @@ class ConnectionManager:
 
                             elif kind == "hello":
                                 print("Hello:", data)
-                                # await self.send_startup_data()
 
                             elif kind == "ack":
                                 print("CONTROL:", data)

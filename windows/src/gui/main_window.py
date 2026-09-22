@@ -24,7 +24,6 @@ from config import UserConfiguration
 
 from .popups import UIEvents, ErrorPopup
 from .control_page import ControlPage
-from .planning_page import PlanningPage
 from .settings_dialog import SettingsDialog
 
 
@@ -51,9 +50,7 @@ class MainWindow(QMainWindow):
         # Pages
         self.stack = QStackedWidget()
         self.control_page = ControlPage(state, connection)
-        self.planning_page = PlanningPage(state, user_config, ui_events)
         self.stack.addWidget(self.control_page)
-        self.stack.addWidget(self.planning_page)
 
         # Main layout
         self.top_bar = self.create_top_bar()
@@ -97,16 +94,6 @@ class MainWindow(QMainWindow):
         self.video_status = QLabel()
         self.controller_status = QLabel()
 
-        # Control Page Button
-        self.control_button = QPushButton("🎮")
-        self.control_button.setToolTip("Control")
-        self.control_button.clicked.connect(self.show_control_page)
-
-        # Planning Page Button
-        self.plan_button = QPushButton("📋")
-        self.plan_button.setToolTip("Planning")
-        self.plan_button.clicked.connect(self.show_planning_page)
-
         # Settings Button
         self.gear_button = QPushButton("⚙")
         self.gear_button.setToolTip("Settings")
@@ -119,17 +106,9 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.video_status)
         layout.addWidget(self.controller_status)
         layout.addStretch()
-        layout.addWidget(self.control_button)
-        layout.addWidget(self.plan_button)
         layout.addWidget(self.gear_button)
 
         return top_bar
-
-    def show_control_page(self) -> None:
-        self.stack.setCurrentWidget(self.control_page)
-
-    def show_planning_page(self) -> None:
-        self.stack.setCurrentWidget(self.planning_page)
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(self.user_config, self.connection, self)
