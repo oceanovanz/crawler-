@@ -13,7 +13,6 @@ WINDOWS TOPSIDE PC
         | JPEG video WebSocket          :8766
         v
 RASPBERRY PI
-  /home/oceanovatest/Desktop/crawler.py
   USB camera + USB serial
         |
         v
@@ -39,17 +38,41 @@ pi/
   oceanova_thonny_camera_esp32.py      Camera + ESP32 bench test
   crawler_stream.py                    Browser MJPEG prototype
   oceanova_crawler_v1.py               Earlier local Pi controller
+  systemd/
+    oceanova-crawler.service           Raspberry Pi boot service
 
 windows/
-  crawler_topside.py                    Current DualSense topside controller
-  oceanova_windows_ws_viewer_system.py Earlier non-driving viewer
-
-systemd/
-  oceanova-crawler.service             Raspberry Pi boot service
+  src/main.py                          DualSense topside controller
 
 prototypes/
   earlier WebSocket revisions
 ```
+
+## Software Versions
+
+There are currently two active software versions for the crawler:
+- `v1`: manual only version 
+  - Supports direct control of the crawler using joystick commands
+- `v2`: first semi-autonomous version
+  - Supports direct control of the crawler using joystick commands
+  - Has route planning options in the topside application
+  - ROS2 navigation and localisation integration in `crawler_pi`
+  - Supports AUTO mode where the crawler follows the planned route autonomously
+  - Note: doesn't yet support SLAM / automatic map making
+
+### Switching between versions
+
+To use v1:
+```bash
+git checkout --recurse-submodules v1
+```
+
+To use v2:
+```bash
+git checkout --recurse-submodules main
+```
+
+Note: make sure the raspberry pi is on the same branch as the topside.
 
 ## Current DualSense controls
 
@@ -78,113 +101,24 @@ Safety behaviour retained in the topside controller:
 - Pi command watchdog remains active
 - ESP32 command watchdog remains active
 
-## Motor command range
+## ESP32
 
-The ESP32 command protocol uses signed values from `-1000` to `+1000`.
+`crawler_esp32` contains the firmware for the esp32. This controls the IMU, motors, and ultrasonic sensor.
 
-```text
--1000  full requested reverse PWM
-0      stop
-+1000  full requested forward PWM
-```
+See the [esp32 README](crawler_esp32/README.md) for details on the target hardware, wiring setup, and the serial protocol.
 
-The current topside controller uses the full `1000 / 1000` range.
+## Raspberry Pi
 
-The ESP32 firmware uses 10-bit PWM (`0..1023`) and maps command magnitude `1000` to full PWM duty. A ramp remains in the ESP32 firmware to avoid instantaneous command steps.
+`crawler_pi` contains the codebase for the raspberry pi. This acts as the bridge between the topside user interface, robot hardware, and serial communication to the esp32.
 
-## ESP32 motor pin map
-
-| Function | ESP32 |
-|---|---:|
-| Left IBT-2 RPWM | GPIO 25 |
-| Left IBT-2 LPWM | GPIO 26 |
-| Right IBT-2 RPWM | GPIO 32 |
-| Right IBT-2 LPWM | GPIO 33 |
-| Both IBT-2 R_EN + L_EN | GPIO 4 |
-
-Use a 10 kOhm pulldown from GPIO 4 to GND so the drivers remain disabled during boot.
-
-## BNO085 I2C wiring
-
-| BNO085 | ESP32 |
-|---|---:|
-| VIN / VCC | 3.3 V |
-| GND | GND |
-| SDA | GPIO 21 |
-| SCL | GPIO 22 |
-
-The firmware probes `0x4A` then `0x4B` at startup and currently uses Game Rotation Vector for relative yaw, pitch and roll.
-
-## ESP32 serial protocol
-
-Baud rate: `115200`
-
-Commands:
-
-```text
-ARM
-STOP
-DISARM
-PING
-STATUS
-M <left> <right>
-```
-
-Example:
-
-```text
-M 1000 1000
-```
-
-Telemetry is emitted approximately every 100 ms:
-
-```text
-T,time_ms,yaw,pitch,roll,left_motor,right_motor,armed,imu_online,orientation_valid
-```
-
-Example:
-
-```text
-T,55476,121.89,70.88,171.65,0,0,0,1,1
-```
-
-## Raspberry Pi setup
-
-The crawler bridge uses normal Raspberry Pi OS system Python.
-
-Install dependencies:
-
-```bash
-sudo apt update
-sudo apt install -y python3-opencv python3-serial python3-websockets
-```
-
-The current deployed Pi script is:
-
-```text
-/home/oceanovatest/Desktop/crawler.py
-```
-
-The repository equivalent is:
-
-```text
-pi/oceanova_pi_ws_bridge_system.py
-```
-
-Run manually:
-
-```bash
-python3 /home/oceanovatest/Desktop/crawler.py
-```
-
-The bridge listens on all interfaces:
+The websocket server communicates to the topside client:
 
 ```text
 TCP 8765   control + telemetry
 TCP 8766   JPEG video
 ```
 
-It automatically searches for the ESP32 under:
+The serial bridge automatically searches for the ESP32 under:
 
 ```text
 /dev/serial/by-id/*
@@ -192,65 +126,21 @@ It automatically searches for the ESP32 under:
 /dev/ttyUSB*
 ```
 
-## Raspberry Pi autostart
+See the [pi README](crawler_pi/README.md) for details on the raspberry pi setup and codebase.
 
-The repo contains:
+## Windows Topside
 
-```text
-systemd/oceanova-crawler.service
-```
+`windows` contains the code base for the topside user application and websocket client to commuicate to the raspberry pi.
 
-Install it on the Pi with:
-
+The application can either be run from the terminal (developer mode):
 ```bash
-sudo cp systemd/oceanova-crawler.service /etc/systemd/system/
-sudo usermod -aG video,dialout oceanovatest
-sudo systemctl daemon-reload
-sudo systemctl enable oceanova-crawler.service
-sudo systemctl start oceanova-crawler.service
+python3 windows/src/main.py
 ```
 
-Check status:
+or by directly running the executable.
 
-```bash
-systemctl status oceanova-crawler
-```
+See the [windows README](windows/README.md) for details on the application code base and instructions on how to create a new windows executable.
 
-Watch logs:
-
-```bash
-journalctl -u oceanova-crawler.service -f
-```
-
-The service runs:
-
-```text
-/usr/bin/python3 /home/oceanovatest/Desktop/crawler.py
-```
-
-and automatically restarts the bridge after a process failure.
-
-## Windows topside setup
-
-Install Python dependencies into the Python installation used to run the controller:
-
-```powershell
-python -m pip install pygame numpy websockets opencv-python
-```
-
-Run the current controller:
-
-```powershell
-python windows\crawler_topside.py
-```
-
-The current default Pi address is `192.168.88.5`. Override it without editing the file:
-
-```powershell
-python windows\crawler_topside.py --pi 192.168.10.2
-```
-
-This makes it easy to use either the current `192.168.88.x` test network or the dedicated tether subnet later.
 
 ## Dedicated Ethernet addressing
 
