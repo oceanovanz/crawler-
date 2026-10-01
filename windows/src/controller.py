@@ -96,8 +96,6 @@ class DualSense:
         if self.pad is None:
             self.state.throttle = 0.0
             self.state.steering = 0.0
-            self.state.left = 0
-            self.state.right = 0
             return
 
         # Check controller attachment
@@ -119,11 +117,7 @@ class DualSense:
 
         # ARM
         if options and not self.prev_options:
-            if (
-                self.state.control_connected
-                and telemetry_fresh(self.state)
-                and not armed(self.state)
-            ):
+            if self.state.control_connected and telemetry_fresh(self.state) and not armed(self.state):
                 self.state.arm_requested = True
                 print("ARM requested")
                 await self.connection.send({"type": "arm"})
@@ -148,15 +142,6 @@ class DualSense:
             -1.0,
             1.0,
         )
-
-        # Motor mixing
-        if can_drive(self.state):
-            self.state.left, self.state.right = mix(
-                self.state.throttle, self.state.steering
-            )
-        else:
-            self.state.left = 0
-            self.state.right = 0
 
     def close(self) -> None:
         if self.pad is not None:

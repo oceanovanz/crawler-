@@ -25,7 +25,7 @@ class VideoWidget(QWidget):
         self.state = state
         self.connection = connection
 
-        self.video_label = QLabel("WAITING FOR CRAWLER VIDEO")
+        self.video_label = QLabel("CRAWLER VIDEO NOT CONNECTED")
         self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.video_label.setMinimumSize(320, 240)
         self.video_label.setStyleSheet("""
@@ -93,28 +93,19 @@ class VideoWidget(QWidget):
         Called periodically by MainWindow.
         """
         frame = self.state.frame
-
         if frame is None:
+            self.video_label.setText("CRAWLER VIDEO NOT CONNECTED")
             return
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         height, width, channels = rgb.shape
 
-        image = QImage(
-            rgb.data,
-            width,
-            height,
-            channels * width,
-            QImage.Format.Format_RGB888,
-        ).copy()
-
+        image = QImage(rgb.data, width, height, channels * width, QImage.Format.Format_RGB888).copy()
         pixmap = QPixmap.fromImage(image)
 
         self.video_label.setPixmap(
             pixmap.scaled(
-                self.video_label.size(),
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
+                self.video_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation
             )
         )
 

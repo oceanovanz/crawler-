@@ -3,7 +3,7 @@ import time
 from typing import Optional
 
 from state import State
-from config import GAMEPAD_DEADZONE, MAX_MOTOR_COMMAND, TELEMETRY_OFFLINE_MS
+from config import GAMEPAD_DEADZONE, MAX_MOTOR_COMMAND, TELEMETRY_OFFLINE_MS, MAX_LINEAR_SPEED, MAX_ANGULAR_SPEED
 
 
 def clamp(v: float, lo: float, hi: float) -> float:
@@ -27,7 +27,10 @@ def telemetry_age_ms(state: State) -> Optional[float]:
 
 
 def armed(state: State) -> bool:
-    return bool(state.telemetry.get("armed", False))
+    try:
+        return bool(state.telemetry["motor"]["armed"])
+    except:
+        return False
 
 
 def get_mode(state: State) -> str:
@@ -44,12 +47,7 @@ def telemetry_fresh(state: State) -> bool:
 
 
 def can_drive(state: State) -> bool:
-    return (
-        state.control_connected
-        and state.controller_connected
-        and telemetry_fresh(state)
-        and armed(state)
-    )
+    return state.control_connected and state.controller_connected and telemetry_fresh(state) and armed(state)
 
 
 def mix(throttle: float, steering: float) -> tuple[int, int]:
@@ -61,3 +59,10 @@ def mix(throttle: float, steering: float) -> tuple[int, int]:
         int(round((left / peak) * MAX_MOTOR_COMMAND)),
         int(round((right / peak) * MAX_MOTOR_COMMAND)),
     )
+
+
+def joystick_to_cmd_vel(throttle: float, steering: float) -> tuple[float, float]:
+    linear_x = throttle * MAX_LINEAR_SPEED
+    angular_z = steering * MAX_ANGULAR_SPEED
+
+    return linear_x, angular_z

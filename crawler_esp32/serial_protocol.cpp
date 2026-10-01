@@ -34,12 +34,6 @@ static void handleCommand(const char* line) {
         return;
     }
 
-    // STATUS
-    if (strcmp(line, "STATUS") == 0) {
-        printStatus();
-        return;
-    }
-
     // MOTOR COMMAND -> M <left> <right> (values -1000 to +1000)
     int left = 0;
     int right = 0;

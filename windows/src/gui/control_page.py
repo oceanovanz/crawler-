@@ -1,6 +1,15 @@
 from __future__ import annotations
 
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QVBoxLayout, QWidget, QGroupBox
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QStackedWidget,
+    QVBoxLayout,
+    QWidget,
+    QGroupBox,
+)
 from PySide6.QtCore import Qt
 
 from state import State
@@ -11,6 +20,7 @@ from .hud_widget import ImuHudWidget
 from .axis_gauge_widget import AxisGauge
 from .sonar_widget import SonarWidget
 from .video_widget import VideoWidget
+from .map_widget import MapWidget
 
 TEXT_STYLE = "color: white;"
 WARNING_STYLE = "color: #f4be4c; font-weight: bold;"
@@ -36,8 +46,18 @@ class ControlPage(QWidget):
         self.state = state
         self.connection = connection
 
-        # --- Video ---
+        # --- Video / Map ---
         self.video = VideoWidget(state, connection)
+        self.map_widget = MapWidget(state)
+
+        self.view_stack = QStackedWidget()
+        self.view_stack.addWidget(self.video)
+        self.view_stack.addWidget(self.map_widget)
+        self.view_stack.setCurrentWidget(self.video)  # video is the default view
+
+        self.view_toggle_button = QPushButton("Show Map")
+        self.view_toggle_button.setCheckable(True)
+        self.view_toggle_button.clicked.connect(self._toggle_view)
 
         # --- Right panel ---
         self.imu_hud = ImuHudWidget()
@@ -104,12 +124,18 @@ class ControlPage(QWidget):
         bottom_layout.addWidget(instructions)
         bottom_layout.addWidget(controls)
 
+        # --- View toggle row (sits above the video/map stack) ---
+        view_toggle_row = QHBoxLayout()
+        view_toggle_row.addStretch()
+        view_toggle_row.addWidget(self.view_toggle_button)
+
         # --- Main area ---
         central = QWidget()
         central_layout = QVBoxLayout(central)
         central_layout.setContentsMargins(10, 10, 10, 10)
-        central_layout.setSpacing(0)
-        central_layout.addWidget(self.video, stretch=1)
+        central_layout.setSpacing(6)
+        central_layout.addLayout(view_toggle_row, stretch=0)
+        central_layout.addWidget(self.view_stack, stretch=1)
         central_layout.addWidget(bottom_panel, stretch=0)
 
         # --- Overall layout ---
@@ -121,7 +147,18 @@ class ControlPage(QWidget):
 
         self.update()
 
+    def _toggle_view(self) -> None:
+        if self.view_stack.currentWidget() is self.video:
+            self.view_stack.setCurrentWidget(self.map_widget)
+            self.view_toggle_button.setText("Show Video")
+        else:
+            self.view_stack.setCurrentWidget(self.video)
+            self.view_toggle_button.setText("Show Map")
+
     def update_gui(self) -> None:
+        if not self.connection.ip_connected:
+            self.state.wipe_telemetry()
+
         telemetry = self.state.telemetry
 
         # Arm state
@@ -141,9 +178,9 @@ class ControlPage(QWidget):
         # IMU
         imu_data = telemetry.get("imu", {})
         self.imu_hud.set_data(
-            yaw=imu_data.get("yaw"),
-            pitch=imu_data.get("pitch"),
-            roll=imu_data.get("roll"),
+            yaw=imu_data.get("yaw", None),
+            pitch=imu_data.get("pitch", None),
+            roll=imu_data.get("roll", None),
             online=bool(imu_data.get("online", False)),
             orientation_valid=bool(imu_data.get("orientation_valid", False)),
         )
@@ -160,8 +197,8 @@ class ControlPage(QWidget):
         # Sonar
         sonar_data = telemetry.get("sonar", {})
         self.sonar_radar.set_measurement(
-            angle=sonar_data.get("angle"),
-            distance=sonar_data.get("distance"),
+            angle=sonar_data.get("angle", None),
+            distance=sonar_data.get("distance", None),
             online=bool(sonar_data.get("online", False)),
             timestamp=int(sonar_data.get("timestamp_ms", 0)),
         )
@@ -169,12 +206,16 @@ class ControlPage(QWidget):
         # Connection status
         age = telemetry_age_ms(self.state)
         age_text = "--" if age is None else f"{age:.0f} ms"
-        self.telemetry_label.setText(f"Telemetry: {age_text}")
+        self.telemetry_label.setText(f"Last telemetry: {age_text}")
         if self.state.rtt_ms is None:
             rtt_text = "--"
         else:
             rtt_text = f"{self.state.rtt_ms:.1f} ms"
         self.rtt_label.setText(f"RTT: {rtt_text}")
 
-        # Video
-        self.video.update()
+        # Video / Map: only repaint whichever view is currently visible
+        current_view = self.view_stack.currentWidget()
+        if current_view is self.video:
+            self.video.update()
+        elif current_view is self.map_widget:
+            self.map_widget.update()

@@ -11,6 +11,8 @@ DEFAULT_RECORD_DIR = Path.home() / "OceanovaCrawler" / "recordings"
 CONTROL_PORT = 8765
 VIDEO_PORT = 8766
 
+MAX_LINEAR_SPEED = 0.5  # m/s
+MAX_ANGULAR_SPEED = 1.0  # rad/s
 MAX_MOTOR_COMMAND = 1000
 GAMEPAD_DEADZONE = 0.12
 COMMAND_RATE_HZ = 20.0
@@ -29,6 +31,7 @@ DEFAULT_BOUNDARY_LENGTH = 0.0
 
 DEFAULT_ROUTE_TYPE = "BOUSTROPHEDON"
 DEFAULT_SWEEP_SPACING = 0.5
+DEFAULT_SAFETY_MARGIN = 0.0
 
 
 @dataclass
@@ -41,6 +44,7 @@ class BoundaryConfiguration:
 class NavigationConfiguration:
     route_type: str = DEFAULT_ROUTE_TYPE
     sweep_spacing: float = DEFAULT_SWEEP_SPACING
+    safety_margin: float = DEFAULT_SAFETY_MARGIN
 
 
 @dataclass
@@ -73,6 +77,7 @@ class UserConfiguration:
             "navigation": {
                 "route_type": self.navigation.route_type,
                 "sweep_spacing": self.navigation.sweep_spacing,
+                "safety_margin": self.navigation.safety_margin,
             },
         }
 
@@ -106,6 +111,10 @@ def load_user_config() -> UserConfiguration:
         navigation = data.get("navigation", {})
         if "route_type" in navigation:
             config.navigation.route_type = str(navigation["route_type"])
+        if "sweep_spacing" in navigation:
+            config.navigation.sweep_spacing = float(navigation["sweep_spacing"])
+        if "safety_margin" in navigation:
+            config.navigation.safety_margin = float(navigation["safety_margin"])
         if "has_coverage_plan" in navigation:
             config.has_coverage_plan = bool(navigation["has_coverage_plan"])
         if "coverage_plan" in navigation:
@@ -118,7 +127,6 @@ def load_user_config() -> UserConfiguration:
 
 
 def save_user_config(config: UserConfiguration) -> bool:
-
     try:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -131,6 +139,8 @@ def save_user_config(config: UserConfiguration) -> bool:
             },
             "navigation": {
                 "route_type": config.navigation.route_type,
+                "sweep_spacing": config.navigation.sweep_spacing,
+                "safety_margin": config.navigation.safety_margin,
                 "has_coverage_plan": config.has_coverage_plan,
                 "coverage_plan": config.coverage_plan,
             },
@@ -138,14 +148,9 @@ def save_user_config(config: UserConfiguration) -> bool:
 
         # Write to a temporary file first so that an interrupted write doesn't leave corrupt config.
         temp_file = USER_CONFIG_FILE.with_suffix(".tmp")
-
-        with temp_file.open(
-            "w",
-            encoding="utf-8",
-        ) as f:
+        with temp_file.open("w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
             f.write("\n")
-
         temp_file.replace(USER_CONFIG_FILE)
 
         print(f"User configuration saved: " f"{USER_CONFIG_FILE}")

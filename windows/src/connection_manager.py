@@ -8,7 +8,7 @@ from datetime import datetime
 from websockets.asyncio.client import connect
 
 from state import State
-from helpers import armed, can_drive
+from helpers import can_drive
 from config import (
     CONTROL_PORT,
     VIDEO_PORT,
@@ -105,8 +105,6 @@ class ConnectionManager:
             self.state.arm_requested = False
             self.state.throttle = 0.0
             self.state.steering = 0.0
-            self.state.left = 0
-            self.state.right = 0
 
             # Disconnect current connections.
             await self._disconnect_connections()
@@ -219,8 +217,6 @@ class ConnectionManager:
         self.state.control_connected = False
         self.state.video_connected = False
         self.state.arm_requested = False
-        self.state.left = 0
-        self.state.right = 0
 
     async def send(self, message: dict) -> None:
         await self.state.queue.put(message)
@@ -229,8 +225,6 @@ class ConnectionManager:
         self.state.arm_requested = False
         self.state.throttle = 0.0
         self.state.steering = 0.0
-        self.state.left = 0
-        self.state.right = 0
         await self.send({"type": "stop", "reason": reason})
 
     async def _control_connection(self) -> None:
@@ -245,7 +239,6 @@ class ConnectionManager:
 
                     self.state.control_connected = True
                     self.state.arm_requested = False
-                    self.state.left = self.state.right = 0
 
                     print("CONTROL connected")
 
@@ -265,8 +258,7 @@ class ConnectionManager:
                             if kind == "telemetry":
                                 self.state.telemetry = data
                                 self.state.telemetry_time = time.monotonic()
-
-                                if data.get("armed"):
+                                if self.state.arm_requested and data["motor"]["armed"]:
                                     self.state.arm_requested = False
 
                             elif kind == "system":
@@ -281,18 +273,24 @@ class ConnectionManager:
                                 self.user_config.coverage_plan = data
                                 self.user_config.has_coverage_plan = True
 
+                            elif kind == "pose":
+                                self.state.pose = data
+
+                            elif kind == "map":
+                                self.state.map = data
+                                self.state.has_new_map = True
+
                             elif kind == "error":
                                 message = data.get("message", "Unknown error")
                                 self.ui_events.error.emit(message)
 
                             elif kind == "fault":
-                                self.state.left = self.state.right = 0
                                 reason = data.get("reason", "Unknown fault")
                                 self.ui_events.error.emit(reason)
 
                             elif kind == "hello":
                                 print("Hello:", data)
-                                # await self.send_startup_data()
+                                await self.send_startup_data()
 
                             elif kind == "ack":
                                 print("CONTROL:", data)
@@ -333,7 +331,6 @@ class ConnectionManager:
             finally:
                 self.state.control_connected = False
                 self.state.arm_requested = False
-                self.state.left = self.state.right = 0
 
             if self.state.running:
                 await asyncio.sleep(RECONNECT_DELAY_S)
@@ -346,28 +343,17 @@ class ConnectionManager:
             try:
                 print("Connecting video:", url)
 
-                async with connect(
-                    url,
-                    compression=None,
-                    ping_interval=5,
-                    ping_timeout=3,
-                    max_size=None,
-                ) as ws:
-
+                async with connect(url, compression=None, ping_interval=5, ping_timeout=3, max_size=None) as ws:
                     self.state.video_connected = True
-                    print("VIDEO connected")
 
                     async for message in ws:
-
                         if isinstance(message, str):
                             continue
 
                         frame = cv2.imdecode(np.frombuffer(message, dtype=np.uint8), cv2.IMREAD_COLOR)
-
+                        self.state.frame = frame
                         if frame is None:
                             continue
-
-                        self.state.frame = frame
 
                         if self.state.recording and self.video_writer is not None:
                             self.video_writer.write(frame)
@@ -394,11 +380,12 @@ class ConnectionManager:
 
             t0 = time.monotonic()
 
-            if self.state.control_connected and armed(self.state):
-                left = self.state.left if can_drive() else 0
-                right = self.state.right if can_drive() else 0
+            # send empty command to avoid timeout while waiting for arming
+            if self.state.arm_requested:
+                await self.send({"type": "motor", "steering": 0, "throttle": 0})
 
-                await self.send({"type": "motor", "left": left, "right": right})
+            elif can_drive(self.state):
+                await self.send({"type": "motor", "steering": self.state.steering, "throttle": self.state.throttle})
 
             await asyncio.sleep(max(0.0, period - (time.monotonic() - t0)))
 

@@ -19,7 +19,10 @@ class State:
 
     # Crawler state
     telemetry: dict = field(default_factory=dict)
+    pose: dict = field(default_factory=dict)
     system: dict = field(default_factory=dict)
+    map: dict = field(default_factory=dict)
+    has_new_map: bool = False
     frame: Optional[np.ndarray] = None
     telemetry_time: float = 0.0
     rtt_ms: Optional[float] = None
@@ -33,3 +36,6 @@ class State:
 
     # Outgoing control messages
     queue: asyncio.Queue = field(default_factory=asyncio.Queue)
+
+    def wipe_telemetry(self):
+        self.telemetry = {}

@@ -65,13 +65,6 @@ class PlanningPage(QWidget):
         self.ui_events = ui_events
         self.view = PlanningView(config.boundary.width, config.boundary.length, config.current_pose)
 
-        self.view.pose_selected.connect(self._pose_selected)
-        self.view.pose_invalid.connect(self._pose_invalid)
-
-        self.plan_timer = QTimer(self)
-        self.plan_timer.timeout.connect(self._check_plan)
-        self.plan_timer.start()
-
         # --- Initialise screen elements ---
         self.width_input = create_spin_box(value=config.boundary.width, min=0.0, max=10000.0)
         self.width_input.valueChanged.connect(self.update_polygon)
@@ -79,31 +72,30 @@ class PlanningPage(QWidget):
         self.length_input.valueChanged.connect(self.update_polygon)
 
         self.route_type = create_combo_box(
-            items=["BOUSTROPHEDON", "SPIRAL"],
-            current=config.navigation.route_type,
-            tip="type of coverage route to generate",
+            items=["BOUSTROPHEDON", "SPIRAL"], current=config.navigation.route_type, tip="type of route to generate"
+        )
+        self.sweep_spacing = create_spin_box(
+            value=config.navigation.sweep_spacing, min=0.0, max=100.0, tip="metres between route lines"
+        )
+        self.safety_margin = create_spin_box(
+            value=config.navigation.safety_margin, min=0.0, max=100.0, tip="safety clearance to walls/obstacles"
         )
 
-        self.sweep_spacing = create_spin_box(
-            value=config.navigation.sweep_spacing,
-            min=0.0,
-            max=100.0,
-            tip="metres between scan lines",
-        )
+        self.select_pose_button = QPushButton("Select intial pose")
+        self.select_pose_button.setToolTip("Click and drag on the map to select the robot's position and orientation.")
+        self.select_pose_button.clicked.connect(self.begin_pose_selection)
+
+        # self.select_roi_button = QPushButton("Select ROI")
+        # self.select_roi_button.setToolTip("Click and drag on the map to select the region of interest.")
+        # self.select_roi_button.clicked.connect(self.begin_roi_selection)
 
         self.plan_status = QLabel("No path generated")
         self.plan_button = QPushButton("Generate Plan")
         self.plan_button.clicked.connect(self.generate_plan)
 
-        self.select_pose_button = QPushButton("Select current pose")
-        self.select_pose_button.setToolTip(
-            "Click and drag on the map to select the robot's starting position and orientation."
-        )
-        self.select_pose_button.clicked.connect(self.begin_pose_selection)
-
         self.start_route_button = QPushButton("Start Route")
         self.start_route_button.setToolTip(
-            "Start the generated coverage route. " "The robot will be switched to AUTO mode."
+            "Start the generated coverage route.\nThe robot will be switched to AUTO mode."
         )
         self.start_route_button.clicked.connect(self.start_route)
 
@@ -121,6 +113,7 @@ class PlanningPage(QWidget):
         path_form.setSpacing(12)
         path_form.addRow("Route type:", self.route_type)
         path_form.addRow("Sweep spacing:", self.sweep_spacing)
+        path_form.addRow("Safety margin:", self.safety_margin)
 
         save_button = QPushButton("Save Configuration")
         save_button.clicked.connect(self.save_user_config)
@@ -136,13 +129,12 @@ class PlanningPage(QWidget):
         side_layout.addLayout(path_form)
         side_layout.addWidget(self.plan_status)
         side_layout.addStretch()
-        side_layout.addWidget(self.plan_button)
         side_layout.addWidget(self.select_pose_button)
+        side_layout.addWidget(self.plan_button)
         side_layout.addWidget(self.start_route_button)
         side_layout.addWidget(save_button)
 
         side_panel = QWidget()
-        side_panel.setObjectName("sidePanel")
         side_panel.setLayout(side_layout)
 
         main_layout = QHBoxLayout(self)
@@ -152,6 +144,13 @@ class PlanningPage(QWidget):
         main_layout.addWidget(side_panel, stretch=1)
 
         self.update_polygon()
+
+        self.view.pose_selected.connect(self._pose_selected)
+        self.view.pose_invalid.connect(self._pose_invalid)
+
+        self.plan_timer = QTimer(self)
+        self.plan_timer.timeout.connect(self._check_plan)
+        self.plan_timer.start()
 
     def update_polygon(self) -> None:
         self.view.set_boundary(self.width_input.value(), self.length_input.value())
@@ -168,6 +167,8 @@ class PlanningPage(QWidget):
         self.user_config.boundary.width = self.width_input.value()
         self.user_config.boundary.length = self.length_input.value()
         self.user_config.navigation.route_type = self.route_type.currentText()
+        self.user_config.navigation.sweep_spacing = self.sweep_spacing.value()
+        self.user_config.navigation.safety_margin = self.safety_margin.value()
 
     def generate_plan(self) -> None:
         if not self.state.control_connected:
@@ -185,6 +186,8 @@ class PlanningPage(QWidget):
         self.plan_timer.start(50)
 
         self.update_user_config()
+        print(self.user_config.navigation.sweep_spacing)
+        print(self.user_config.navigation.safety_margin)
         plan_msg = self.user_config.plan_msg()
         asyncio.create_task(self.state.queue.put(plan_msg))
 

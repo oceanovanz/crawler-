@@ -59,7 +59,7 @@ void serviceTelemetry() {
     }
 
     if (static_cast<uint32_t>(now - lastImuMs) >= IMU_PERIOD_MS) {
-        lastImuTelemetryMs = now;
+        lastImuMs = now;
         printImuTelemetry();
     }
 
