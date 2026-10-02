@@ -86,9 +86,9 @@ void printTelemetry() {
 }
 
 void printImuTelemetry() {
-    // I,<timestamp>,<imu_online>,<orientation_valid>,<yaw>,<pitch>,<roll>
-    Serial.printf("I,%lu,%d,%d,%.2f,%.2f,%.2f\n", static_cast<unsigned long>(millis()), isImuOnline() ? 1 : 0,
-                  isOrientationValid() ? 1 : 0, getYaw(), getPitch(), getRoll());
+    // I,<timestamp>,<imu_online>,<orientation_valid>,<qr>,<qi>,<qj>,<qk>
+    Serial.printf("I,%lu,%d,%d,%.2f,%.2f,%.2f,%.2f\n", static_cast<unsigned long>(millis()), isImuOnline() ? 1 : 0,
+                  isOrientationValid() ? 1 : 0, getQuaternionR(), getQuaternionI(), getQuaternionJ(), getQuaternionK());
 }
 
 void printSonarTelemetry() {

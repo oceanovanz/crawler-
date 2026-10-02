@@ -110,7 +110,7 @@ T,<timestamp>,<left_motor>,<right_motor>,<armed>
 IMU orientation:
 
 ```text
-I,<timestamp>,<imu_online>,<orientation_valid>,<yaw>,<pitch>,<roll>
+I,<timestamp>,<imu_online>,<orientation_valid>,<qr>,<qi>,<qj>,<qk>
 ```
 
 Sonar:
@@ -173,8 +173,7 @@ Owns:
 * BNO085 initialisation
 * I2C address detection
 * IMU recovery
-* Orientation updates
-* Yaw/pitch/roll state
+* Orientation updates and state
 
 ### `sonar.cpp`
 

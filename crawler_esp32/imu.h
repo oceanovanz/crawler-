@@ -40,8 +40,9 @@ bool isOrientationValid();
 uint8_t getActiveImuAddress();
 
 // Orientation
-float getYaw();
-float getPitch();
-float getRoll();
+float getQuaternionR();
+float getQuaternionI();
+float getQuaternionJ();
+float getQuaternionK();
 
 #endif

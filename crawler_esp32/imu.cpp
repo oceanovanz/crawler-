@@ -15,9 +15,10 @@ static uint32_t lastImuRetryMs = 0;
 
 static bool imuOnline = false;
 static bool orientationValid = false;
-static float yawDeg = 0.0f;
-static float pitchDeg = 0.0f;
-static float rollDeg = 0.0f;
+static float qr = 0.0f;
+static float qi = 0.0f;
+static float qj = 0.0f;
+static float qk = 0.0f;
 
 // ---------- Internal helpers ----------
 
@@ -87,27 +88,6 @@ static bool startImu() {
     return false;
 }
 
-static void quaternionToEuler(float qr, float qi, float qj, float qk) {
-    const float sinrCosp = 2.0f * (qr * qi + qj * qk);
-    const float cosrCosp = 1.0f - 2.0f * (qi * qi + qj * qj);
-
-    rollDeg = atan2f(sinrCosp, cosrCosp) * 180.0f / PI;
-
-    float sinp = 2.0f * (qr * qj - qk * qi);
-    sinp = constrain(sinp, -1.0f, 1.0f);
-
-    pitchDeg = asinf(sinp) * 180.0f / PI;
-
-    const float sinyCosp = 2.0f * (qr * qk + qi * qj);
-    const float cosyCosp = 1.0f - 2.0f * (qj * qj + qk * qk);
-
-    yawDeg = atan2f(sinyCosp, cosyCosp) * 180.0f / PI;
-
-    if (yawDeg < 0.0f) {
-        yawDeg += 360.0f;
-    }
-}
-
 // ---------- Public functions ----------
 
 void setupImu(bool i2cAvailable) {
@@ -145,14 +125,18 @@ void serviceImu() {
         while (bno08x.getSensorEvent(&sensorValue)) {
             switch (sensorValue.sensorId) {
                 case SH2_GAME_ROTATION_VECTOR:
-                    quaternionToEuler(sensorValue.un.gameRotationVector.real, sensorValue.un.gameRotationVector.i,
-                                      sensorValue.un.gameRotationVector.j, sensorValue.un.gameRotationVector.k);
+                    qr = sensorValue.un.gameRotationVector.real;
+                    qi = sensorValue.un.gameRotationVector.i;
+                    qj = sensorValue.un.gameRotationVector.j;
+                    qk = sensorValue.un.gameRotationVector.k;
                     orientationValid = true;
                     break;
 
                 case SH2_ROTATION_VECTOR:
-                    quaternionToEuler(sensorValue.un.rotationVector.real, sensorValue.un.rotationVector.i,
-                                      sensorValue.un.rotationVector.j, sensorValue.un.rotationVector.k);
+                    qr = sensorValue.un.rotationVector.real;
+                    qi = sensorValue.un.rotationVector.i;
+                    qj = sensorValue.un.rotationVector.j;
+                    qk = sensorValue.un.rotationVector.k;
                     orientationValid = true;
                     break;
 
@@ -217,8 +201,7 @@ bool isOrientationValid() { return orientationValid; }
 
 uint8_t getActiveImuAddress() { return activeImuAddress; }
 
-float getYaw() { return yawDeg; }
-
-float getPitch() { return pitchDeg; }
-
-float getRoll() { return rollDeg; }
+float getQuaternionR() { return qr; }
+float getQuaternionI() { return qi; }
+float getQuaternionJ() { return qj; }
+float getQuaternionK() { return qk; }
