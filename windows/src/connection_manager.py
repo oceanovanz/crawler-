@@ -8,7 +8,6 @@ from datetime import datetime
 from websockets.asyncio.client import connect
 
 from state import State
-from helpers import can_drive
 from config import (
     CONTROL_PORT,
     VIDEO_PORT,
@@ -257,7 +256,6 @@ class ConnectionManager:
 
                             if kind == "telemetry":
                                 self.state.telemetry = data
-                                self.state.telemetry_time = time.monotonic()
                                 if self.state.arm_requested and data["motor"]["armed"]:
                                     self.state.arm_requested = False
 
@@ -268,10 +266,6 @@ class ConnectionManager:
                                 sent = data.get("client_time")
                                 if isinstance(sent, (int, float)):
                                     self.state.rtt_ms = (time.time() - float(sent)) * 1000.0
-
-                            elif kind == "plan_result":
-                                self.user_config.coverage_plan = data
-                                self.user_config.has_coverage_plan = True
 
                             elif kind == "pose":
                                 self.state.pose = data
@@ -294,6 +288,10 @@ class ConnectionManager:
 
                             elif kind == "ack":
                                 print("CONTROL:", data)
+                                if data.get("command", None) == "upload_map":
+                                    self.state.map_uploaded = True
+                                elif data.get("command", None) == "upload_route":
+                                    self.state.route_uploaded = True
 
                     async def sender():
                         while self.state.running:
@@ -384,7 +382,7 @@ class ConnectionManager:
             if self.state.arm_requested:
                 await self.send({"type": "motor", "steering": 0, "throttle": 0})
 
-            elif can_drive(self.state):
+            elif self.state.can_drive():
                 await self.send({"type": "motor", "steering": self.state.steering, "throttle": self.state.throttle})
 
             await asyncio.sleep(max(0.0, period - (time.monotonic() - t0)))

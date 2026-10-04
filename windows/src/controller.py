@@ -1,15 +1,24 @@
+import math
 import pygame
 from pygame._sdl2 import controller as sdl2_controller
 
 from state import State
 from connection_manager import ConnectionManager
 
-from config import (
-    THROTTLE_SIGN,
-    STEERING_SIGN,
-)
+from config import THROTTLE_SIGN, STEERING_SIGN, GAMEPAD_DEADZONE
 
-from helpers import clamp, deadzone, can_drive, mix, telemetry_fresh, armed
+
+def clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def deadzone(v: float) -> float:
+    if abs(v) <= GAMEPAD_DEADZONE:
+        return 0.0
+
+    mag = (abs(v) - GAMEPAD_DEADZONE) / (1.0 - GAMEPAD_DEADZONE)
+
+    return math.copysign(mag, v)
 
 
 class DualSense:
@@ -117,7 +126,7 @@ class DualSense:
 
         # ARM
         if options and not self.prev_options:
-            if self.state.control_connected and telemetry_fresh(self.state) and not armed(self.state):
+            if self.state.control_connected and self.state.is_telemetry_fresh() and not self.state.is_armed():
                 self.state.arm_requested = True
                 print("ARM requested")
                 await self.connection.send({"type": "arm"})

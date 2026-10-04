@@ -45,6 +45,7 @@ class NavigationConfiguration:
     route_type: str = DEFAULT_ROUTE_TYPE
     sweep_spacing: float = DEFAULT_SWEEP_SPACING
     safety_margin: float = DEFAULT_SAFETY_MARGIN
+    robot_radius: float = 0.25  # meters; used for wall clearance in planning
 
 
 @dataclass

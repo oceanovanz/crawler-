@@ -1,7 +1,9 @@
 from __future__ import annotations
+import asyncio
 
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame,
+    QComboBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -10,12 +12,12 @@ from PySide6.QtWidgets import (
     QWidget,
     QGroupBox,
 )
-from PySide6.QtCore import Qt
 
 from state import State
 from connection_manager import ConnectionManager
-from helpers import armed, telemetry_age_ms, get_mode
 
+from .styling import create_divider
+from .popups import UIEvents
 from .hud_widget import ImuHudWidget
 from .axis_gauge_widget import AxisGauge
 from .sonar_widget import SonarWidget
@@ -26,25 +28,45 @@ TEXT_STYLE = "color: white;"
 WARNING_STYLE = "color: #f4be4c; font-weight: bold;"
 ERROR_STYLE = "color: #f55b5b; font-weight: bold;"
 
+SMALL_BUTTON_STYLE = """
+QPushButton {
+    font-size: 10px;
+    padding: 2px 8px;
+}
+"""
 
-def create_divider():
-    divider = QFrame()
-    divider.setFrameShape(QFrame.Shape.HLine)
-    divider.setFrameShadow(QFrame.Shadow.Sunken)
-    divider.setStyleSheet("""
-        background-color: #333333;
-        max-height: 0.1px;
-    """)
-    return divider
+ESTOP_BUTTON_STYLE = """
+QPushButton {
+    background-color: #c62828;
+    color: white;
+    font-weight: bold;
+    font-size: 11px;
+    border: 2px solid #7f0000;
+    border-radius: 6px;
+    padding: 2px 10px;
+}
+QPushButton:hover {
+    background-color: #e53935;
+}
+QPushButton:pressed {
+    background-color: #7f0000;
+}
+"""
 
 
 class ControlPage(QWidget):
 
-    def __init__(self, state: State, connection: ConnectionManager, parent=None) -> None:
+    def __init__(self, state: State, connection: ConnectionManager, ui_events: UIEvents, parent=None) -> None:
         super().__init__(parent)
 
         self.state = state
         self.connection = connection
+        self.ui_events = ui_events
+
+        # Guards against _on_mode_changed reacting to a programmatic update
+        # (from update_gui syncing the dropdown to actual robot state)
+        # as if it were a user-initiated change.
+        self._syncing_mode_dropdown = False
 
         # --- Video / Map ---
         self.video = VideoWidget(state, connection)
@@ -64,9 +86,35 @@ class ControlPage(QWidget):
         self.throttle_gauge = AxisGauge("THROTTLE")
         self.steering_gauge = AxisGauge("STEERING")
         self.arm_label = QLabel()
-        self.mode_label = QLabel()
         self.left_motor_label = QLabel()
         self.right_motor_label = QLabel()
+
+        self.arm_button = QPushButton("Arm")
+        self.arm_button.setStyleSheet(SMALL_BUTTON_STYLE)
+        self.arm_button.setFixedHeight(22)
+        self.arm_button.clicked.connect(self._on_arm_toggle)
+
+        self.mode_dropdown = QComboBox()
+        self.mode_dropdown.addItems(["MANUAL", "AUTO"])
+        self.mode_dropdown.currentTextChanged.connect(self._on_mode_changed)
+
+        self.stop_route_button = QPushButton("Stop Route")
+        self.stop_route_button.setToolTip("Pause the currently running coverage route.")
+        self.stop_route_button.setStyleSheet(SMALL_BUTTON_STYLE)
+        self.stop_route_button.setFixedHeight(22)
+        self.stop_route_button.clicked.connect(self._on_stop_route)
+
+        self.resume_route_button = QPushButton("Resume Route")
+        self.resume_route_button.setToolTip("Resume a previously paused coverage route.")
+        self.resume_route_button.setStyleSheet(SMALL_BUTTON_STYLE)
+        self.resume_route_button.setFixedHeight(22)
+        self.resume_route_button.clicked.connect(self._on_resume_route)
+
+        self.estop_button = QPushButton("E-STOP")
+        self.estop_button.setToolTip("Immediately disarm and cancel any running route.")
+        self.estop_button.setStyleSheet(ESTOP_BUTTON_STYLE)
+        self.estop_button.setFixedHeight(22)
+        self.estop_button.clicked.connect(self._on_emergency_stop)
 
         self.sonar_radar = SonarWidget(max_distance=4.0)
         self.telemetry_label = QLabel()
@@ -80,18 +128,33 @@ class ControlPage(QWidget):
         control_group = QGroupBox("CONTROL")
         control_layout = QVBoxLayout(control_group)
         control_layout.setContentsMargins(10, 10, 10, 10)
-        control_layout.setSpacing(10)
-        row_layout = QHBoxLayout(control_group)
-        row_layout.addWidget(self.arm_label, stretch=1)
-        row_layout.addWidget(self.mode_label, stretch=2)
-        control_layout.addLayout(row_layout)
+        control_layout.setSpacing(8)
+
+        arm_row = QHBoxLayout()
+        arm_row.addWidget(self.arm_label)
+        arm_row.addWidget(self.arm_button)
+        arm_row.addStretch()
+        control_layout.addLayout(arm_row)
+
+        mode_row = QHBoxLayout()
+        mode_row.addWidget(QLabel("Mode:"))
+        mode_row.addWidget(self.mode_dropdown)
+        mode_row.addStretch()
+        control_layout.addLayout(mode_row)
+
+        action_row = QHBoxLayout()
+        action_row.addWidget(self.stop_route_button)
+        action_row.addWidget(self.resume_route_button)
+        action_row.addWidget(self.estop_button)
+        control_layout.addLayout(action_row)
+
         control_layout.addWidget(create_divider())
         control_layout.addWidget(self.throttle_gauge)
         control_layout.addWidget(self.steering_gauge)
-        row_layout = QHBoxLayout(control_group)
-        row_layout.addWidget(self.left_motor_label, stretch=1)
-        row_layout.addWidget(self.right_motor_label, stretch=1)
-        control_layout.addLayout(row_layout)
+        motor_row = QHBoxLayout()
+        motor_row.addWidget(self.left_motor_label, stretch=1)
+        motor_row.addWidget(self.right_motor_label, stretch=1)
+        control_layout.addLayout(motor_row)
 
         sonar_group = QGroupBox("SONAR")
         sonar_layout = QVBoxLayout(sonar_group)
@@ -145,6 +208,7 @@ class ControlPage(QWidget):
         layout.addWidget(central, stretch=2.5)
         layout.addWidget(right_panel, stretch=1.5)
 
+        self._sync_mode_dropdown()
         self.update()
 
     def _toggle_view(self) -> None:
@@ -155,6 +219,68 @@ class ControlPage(QWidget):
             self.view_stack.setCurrentWidget(self.video)
             self.view_toggle_button.setText("Show Map")
 
+    # ------------------------------------------------------------------
+    # Button / dropdown handlers
+    # ------------------------------------------------------------------
+
+    def _on_arm_toggle(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot arm/disarm.")
+            return
+
+        if self.state.is_armed():
+            asyncio.create_task(self.state.queue.put({"type": "stop"}))
+        else:
+            asyncio.create_task(self.state.queue.put({"type": "arm"}))
+
+    def _on_mode_changed(self, text: str) -> None:
+        if self._syncing_mode_dropdown:
+            return  # programmatic sync from update_gui(), not a user action
+
+        mode = text.lower()
+
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot change mode.")
+            self._sync_mode_dropdown()
+            return
+
+        # Switching to auto starts the uploaded route (see TopsideNode.set_mode),
+        # so a route can't be started this way unless one's actually in place.
+        if mode == "auto" and (not self.state.map_uploaded or not self.state.route_uploaded):
+            self.ui_events.error.emit("Upload a map and a route before switching to Auto mode.")
+            self._sync_mode_dropdown()
+            return
+
+        asyncio.create_task(self.state.queue.put({"type": "set_mode", "mode": mode}))
+
+    def _on_stop_route(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot stop route.")
+            return
+        asyncio.create_task(self.state.queue.put({"type": "cancel_route"}))
+
+    def _on_resume_route(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot resume route.")
+            return
+        asyncio.create_task(self.state.queue.put({"type": "resume_route"}))
+
+    def _on_emergency_stop(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot send emergency stop.")
+            return
+        asyncio.create_task(self.state.queue.put({"type": "stop"}))
+
+    # ------------------------------------------------------------------
+    # GUI refresh
+    # ------------------------------------------------------------------
+
+    def _sync_mode_dropdown(self) -> None:
+        """Reflect actual robot state in the dropdown without re-triggering a mode change."""
+        self._syncing_mode_dropdown = True
+        self.mode_dropdown.setCurrentText(self.state.get_mode().upper())
+        self._syncing_mode_dropdown = False
+
     def update_gui(self) -> None:
         if not self.connection.ip_connected:
             self.state.wipe_telemetry()
@@ -162,18 +288,20 @@ class ControlPage(QWidget):
         telemetry = self.state.telemetry
 
         # Arm state
-        if armed(self.state):
+        if self.state.is_armed():
             self.arm_label.setText("ARMED")
             self.arm_label.setStyleSheet("color: #f4be4c; " "font-size: 16px; " "font-weight: bold;")
+            self.arm_button.setText("Disarm")
         elif self.state.arm_requested:
             self.arm_label.setText("ARM REQUESTED")
             self.arm_label.setStyleSheet("color: #f4be4c; " "font-size: 16px; " "font-weight: bold;")
+            self.arm_button.setText("Arm")
         else:
             self.arm_label.setText("DISARMED")
             self.arm_label.setStyleSheet("color: #58d68d; " "font-size: 16px; " "font-weight: bold;")
+            self.arm_button.setText("Arm")
 
-        # Mode
-        self.mode_label.setText("Mode: " + get_mode(self.state).upper())
+        self._sync_mode_dropdown()
 
         # IMU
         imu_data = telemetry.get("imu", {})
@@ -204,7 +332,7 @@ class ControlPage(QWidget):
         )
 
         # Connection status
-        age = telemetry_age_ms(self.state)
+        age = self.state.system.get("telemetry_age_ms", None)
         age_text = "--" if age is None else f"{age:.0f} ms"
         self.telemetry_label.setText(f"Last telemetry: {age_text}")
         if self.state.rtt_ms is None:

@@ -5,21 +5,11 @@ import time
 
 from PySide6.QtCore import QEvent, QTimer, Qt
 from PySide6.QtGui import QKeyEvent
-from PySide6.QtWidgets import (
-    QMainWindow,
-    QStackedWidget,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-)
-
+from PySide6.QtWidgets import QMainWindow, QStackedWidget, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 from state import State
 from connection_manager import ConnectionManager
 from controller import DualSense
-from helpers import armed
 from config import UserConfiguration
 
 from .popups import UIEvents, ErrorPopup
@@ -50,7 +40,7 @@ class MainWindow(QMainWindow):
 
         # Pages
         self.stack = QStackedWidget()
-        self.control_page = ControlPage(state, connection)
+        self.control_page = ControlPage(state, connection, ui_events)
         self.planning_page = PlanningPage(state, user_config, ui_events)
         self.stack.addWidget(self.control_page)
         self.stack.addWidget(self.planning_page)
@@ -195,7 +185,7 @@ class MainWindow(QMainWindow):
         super().changeEvent(event)
 
         if event.type() == QEvent.Type.WindowDeactivate:
-            if armed(self.state):
+            if self.state.is_armed():
                 asyncio.create_task(self.connection.stop_motors("WINDOW FOCUS LOST"))
 
     def closeEvent(self, event) -> None:

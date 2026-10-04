@@ -2,57 +2,14 @@ from __future__ import annotations
 import asyncio
 import numpy as np
 
-from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import (
-    QDoubleSpinBox,
-    QFormLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QVBoxLayout,
-    QWidget,
-    QFrame,
-    QComboBox,
-    QMessageBox,
-)
-from state import State
-from config import UserConfiguration, save_user_config
+from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+
+from .styling import create_spin_box, create_combo_box, create_divider
 from .popups import UIEvents
 from .planning_view import PlanningView
-
-
-def create_spin_box(value=None, tip=None, min=0.1, max=10.0, dp=2, suffix=" m"):
-    box = QDoubleSpinBox()
-    box.setRange(min, max)
-    box.setDecimals(dp)
-    box.setSuffix(suffix)
-    if value:
-        box.setValue(value)
-    if tip:
-        box.setToolTip(tip)
-    return box
-
-
-def create_combo_box(items, current=None, tip=None):
-    box = QComboBox()
-    box.addItems(items)
-    box.setStyleSheet("color: white; background-color: #1e1e1e;")
-    if current:
-        box.setCurrentText(current)
-    if tip:
-        box.setToolTip(tip)
-    return box
-
-
-def create_divider():
-    divider = QFrame()
-    divider.setFrameShape(QFrame.Shape.HLine)
-    divider.setFrameShadow(QFrame.Shadow.Sunken)
-    divider.setStyleSheet("""
-        background-color: #333333;
-        max-height: 1px;
-    """)
-    return divider
+from state import State
+from config import UserConfiguration, save_user_config
+from path_generation import build_boundary_grid, compute_boustrophedon_path, compute_spiral_path
 
 
 class PlanningPage(QWidget):
@@ -80,6 +37,9 @@ class PlanningPage(QWidget):
         self.safety_margin = create_spin_box(
             value=config.navigation.safety_margin, min=0.0, max=100.0, tip="safety clearance to walls/obstacles"
         )
+        self.robot_radius = create_spin_box(
+            value=config.navigation.robot_radius, min=0.01, max=10.0, tip="robot radius, used for wall clearance"
+        )
 
         self.select_pose_button = QPushButton("Select intial pose")
         self.select_pose_button.setToolTip("Click and drag on the map to select the robot's position and orientation.")
@@ -91,13 +51,15 @@ class PlanningPage(QWidget):
 
         self.plan_status = QLabel("No path generated")
         self.plan_button = QPushButton("Generate Plan")
-        self.plan_button.clicked.connect(self.generate_plan)
+        self.plan_button.clicked.connect(self.generate_route)
 
-        self.start_route_button = QPushButton("Start Route")
-        self.start_route_button.setToolTip(
-            "Start the generated coverage route.\nThe robot will be switched to AUTO mode."
-        )
-        self.start_route_button.clicked.connect(self.start_route)
+        self.upload_map_button = QPushButton("Upload Map")
+        self.upload_map_button.setToolTip("Send the boundary dimensions to the robot and publish the map.")
+        self.upload_map_button.clicked.connect(self.upload_map)
+
+        self.upload_route_button = QPushButton("Upload Route")
+        self.upload_route_button.setToolTip("Send the generated coverage route to the robot.")
+        self.upload_route_button.clicked.connect(self.upload_route)
 
         # --- Layout ---
         boundary_title = QLabel("BOUNDARY")
@@ -114,6 +76,7 @@ class PlanningPage(QWidget):
         path_form.addRow("Route type:", self.route_type)
         path_form.addRow("Sweep spacing:", self.sweep_spacing)
         path_form.addRow("Safety margin:", self.safety_margin)
+        path_form.addRow("Robot radius:", self.robot_radius)
 
         save_button = QPushButton("Save Configuration")
         save_button.clicked.connect(self.save_user_config)
@@ -131,7 +94,8 @@ class PlanningPage(QWidget):
         side_layout.addStretch()
         side_layout.addWidget(self.select_pose_button)
         side_layout.addWidget(self.plan_button)
-        side_layout.addWidget(self.start_route_button)
+        side_layout.addWidget(self.upload_map_button)
+        side_layout.addWidget(self.upload_route_button)
         side_layout.addWidget(save_button)
 
         side_panel = QWidget()
@@ -147,10 +111,6 @@ class PlanningPage(QWidget):
 
         self.view.pose_selected.connect(self._pose_selected)
         self.view.pose_invalid.connect(self._pose_invalid)
-
-        self.plan_timer = QTimer(self)
-        self.plan_timer.timeout.connect(self._check_plan)
-        self.plan_timer.start()
 
     def update_polygon(self) -> None:
         self.view.set_boundary(self.width_input.value(), self.length_input.value())
@@ -169,11 +129,16 @@ class PlanningPage(QWidget):
         self.user_config.navigation.route_type = self.route_type.currentText()
         self.user_config.navigation.sweep_spacing = self.sweep_spacing.value()
         self.user_config.navigation.safety_margin = self.safety_margin.value()
+        self.user_config.navigation.robot_radius = self.robot_radius.value()
 
-    def generate_plan(self) -> None:
-        if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot generate route.")
-            return
+    def generate_route(self) -> None:
+        """
+        Plan fully offline: build the boundary grid locally and call the
+        path generator directly, no round trip to the robot involved.
+        """
+        self.update_user_config()
+        nav = self.user_config.navigation
+        boundary = self.user_config.boundary
 
         self.user_config.has_coverage_plan = False
         self.user_config.coverage_plan = None
@@ -183,86 +148,63 @@ class PlanningPage(QWidget):
         self.plan_status.setStyleSheet("color: #f4be4c;")
         self.plan_button.setEnabled(False)
 
-        self.plan_timer.start(50)
+        try:
+            grid = build_boundary_grid(boundary.width, boundary.length)
 
-        self.update_user_config()
-        print(self.user_config.navigation.sweep_spacing)
-        print(self.user_config.navigation.safety_margin)
-        plan_msg = self.user_config.plan_msg()
-        asyncio.create_task(self.state.queue.put(plan_msg))
-
-    def start_route(self) -> None:
-        if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot start route.")
-            return
-
-        if not self.user_config.has_pose():
-            self.ui_events.error.emit("Current pose must be selected before the route can start.")
-            return
-
-        if not self.user_config.has_coverage_plan:
-            self.ui_events.error.emit("A coverage path must be generated before the route can start.")
-            return
-
-        self._show_start_route_confirmation()
-
-    def _show_start_route_confirmation(self) -> None:
-        result = QMessageBox.warning(
-            self,
-            "Start Route",
-            (
-                "Starting the route will switch the robot to AUTO mode and begin executing the coverage path.\n\n"
-                "Please check that the current pose represents the current position and orientation of the crawler before continuing.\n\n"
-                "Are you sure you want to continue?"
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-
-        if result == QMessageBox.StandardButton.Yes:
-            self._start_route_confirmed()
-
-    def _start_route_confirmed(self) -> None:
-        message = {"type": "start_route"}
-        asyncio.create_task(self.state.queue.put(message))
-
-    def _check_plan(self) -> None:
-        # not received plan yet -> skip and check again next callback
-        if not self.user_config.has_coverage_plan:
-            return
-
-        # received plan -> can stop checking
-        self.plan_timer.stop()
-
-        coverage_plan = self.user_config.coverage_plan
-        success = coverage_plan.get("success", False)
-
-        if success:
-            planning_time = coverage_plan.get("planning_time")
-            time_sec = planning_time.get("sec", 0) + planning_time.get("nanosec", 0) * 1e-9
-            self.plan_status.setText(f"Path generated ({time_sec:.2f} s)")
-            self.plan_status.setStyleSheet("color: #4caf50;")
-            self._display_coverage_plan(coverage_plan)
-        else:
-            error = coverage_plan.get("error", "unknown")
-            self.plan_status.setText(f"Planning failed (error {error})")
+            if nav.route_type == "BOUSTROPHEDON":
+                waypoints = compute_boustrophedon_path(grid, nav.robot_radius, nav.sweep_spacing, nav.safety_margin)
+            elif nav.route_type == "SPIRAL":
+                waypoints = compute_spiral_path(grid, nav.robot_radius, nav.sweep_spacing, nav.safety_margin)
+            else:
+                raise ValueError(f"Unknown route type: {nav.route_type}")
+        except Exception as exc:
+            self.plan_status.setText(f"Planning failed: {exc}")
             self.plan_status.setStyleSheet("color: #f55b5b;")
+            self.plan_button.setEnabled(True)
+            return
+
         self.plan_button.setEnabled(True)
 
-    def _display_coverage_plan(self, coverage_plan: dict) -> None:
-        if not coverage_plan:
+        if not waypoints:
+            self.plan_status.setText("No reachable coverage waypoints found.")
+            self.plan_status.setStyleSheet("color: #f55b5b;")
             return
 
-        nav_path = coverage_plan.get("nav_path")
+        self.user_config.coverage_plan = waypoints  # list[(x, y, yaw)]
+        self.user_config.has_coverage_plan = True
+        self.plan_status.setText(f"Path generated ({len(waypoints)} waypoints)")
+        self.plan_status.setStyleSheet("color: #4caf50;")
+        self.view.set_path([(x, y) for x, y, _ in waypoints], 0.5)  # TODO: vacuum width
 
-        if not nav_path:
+    def upload_map(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot upload map.")
             return
 
-        path = self._extract_nav_path(nav_path)
-        self.view.set_path(path, 0.5)  # TODO: vacuum width
+        self.update_user_config()
+        msg = {
+            "type": "upload_map",
+            "boundary": {
+                "width": self.user_config.boundary.width,
+                "length": self.user_config.boundary.length,
+            },
+        }
+        asyncio.create_task(self.state.queue.put(msg))
 
-    def _extract_nav_path(self, nav_path: dict) -> list[tuple[float, float]]:
-        return [(float(pose["position"]["x"]), float(pose["position"]["y"])) for pose in nav_path.get("poses", [])]
+    def upload_route(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot. Cannot upload route.")
+            return
+
+        if not self.user_config.has_coverage_plan:
+            self.ui_events.error.emit("A coverage path must be generated before it can be uploaded.")
+            return
+
+        msg = {
+            "type": "upload_route",
+            "waypoints": [{"x": x, "y": y, "yaw": yaw} for x, y, yaw in self.user_config.coverage_plan],
+        }
+        asyncio.create_task(self.state.queue.put(msg))
 
     def _pose_invalid(self) -> None:
         self.ui_events.error.emit("Starting position must be inside the boundary.")
