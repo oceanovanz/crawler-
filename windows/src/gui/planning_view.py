@@ -31,13 +31,13 @@ class PlanningView(QWidget):
     pose_selected = Signal(float, float, float)
     pose_invalid = Signal()
 
-    def __init__(self, width_m: float, length_m: float, pose: tuple, parent=None) -> None:
+    def __init__(self, width_m: float, length_m: float, pose: tuple, path: list = None, parent=None) -> None:
         super().__init__(parent)
 
         self.boundary_width = width_m
         self.boundary_length = length_m
-        self.path: Optional[list[tuple[float, float]]] = None
-        self.path_width: float = 0.5  # TODO: get vacuum width
+        self.path = path
+        self.path_width = 0.3  # TODO: get vacuum width
         self.border_width = None
 
         self.selecting_pose = False
@@ -47,6 +47,7 @@ class PlanningView(QWidget):
 
         self.setMinimumSize(400, 300)
         self.setStyleSheet("background-color: white;")
+        self.update()
 
     def set_boundary(self, width_m: float, length_m: float) -> None:
         self.boundary_width = width_m
@@ -54,9 +55,8 @@ class PlanningView(QWidget):
         self.clear_path()
         self.update()
 
-    def set_path(self, path: list[tuple[float, float]], width: float) -> None:
+    def set_path(self, path: list) -> None:
         self.path = path
-        self.path_width = width
         self.update()
 
     def clear_path(self) -> None:
@@ -151,7 +151,7 @@ class PlanningView(QWidget):
 
         painter.setPen(coverage_pen)
 
-        points = [self._world_to_screen(x, y) for x, y in self.path]
+        points = [self._world_to_screen(x, y) for x, y, _ in self.path]
 
         for p1, p2 in zip(points[:-1], points[1:]):
             painter.drawLine(p1, p2)

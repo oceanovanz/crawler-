@@ -116,7 +116,8 @@ class MainWindow(QMainWindow):
         return top_bar
 
     def show_control_page(self) -> None:
-        self.stack.setCurrentWidget(self.control_page)
+        if self.planning_page.confirm_navigate_away():
+            self.stack.setCurrentWidget(self.control_page)
 
     def show_planning_page(self) -> None:
         self.stack.setCurrentWidget(self.planning_page)

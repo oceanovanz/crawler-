@@ -3,3 +3,5 @@ opencv-python
 numpy
 PySide6
 qasync
+
+-e ../crawler_pi/shared_lib/

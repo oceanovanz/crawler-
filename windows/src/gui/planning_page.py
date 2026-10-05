@@ -2,14 +2,14 @@ from __future__ import annotations
 import asyncio
 import numpy as np
 
-from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFormLayout, QHBoxLayout, QLabel, QMessageBox, QPushButton, QVBoxLayout, QWidget
 
 from .styling import create_spin_box, create_combo_box, create_divider
 from .popups import UIEvents
 from .planning_view import PlanningView
 from state import State
 from config import UserConfiguration, save_user_config
-from path_generation import build_boundary_grid, compute_boustrophedon_path, compute_spiral_path
+from crawler_utils.path_generation import build_boundary_grid, compute_boustrophedon_path, compute_spiral_path
 
 
 class PlanningPage(QWidget):
@@ -20,7 +20,9 @@ class PlanningPage(QWidget):
         self.state = state
         self.user_config = config
         self.ui_events = ui_events
-        self.view = PlanningView(config.boundary.width, config.boundary.length, config.current_pose)
+        self.view = PlanningView(
+            config.boundary.width, config.boundary.length, config.current_pose, config.coverage_plan
+        )
 
         # --- Initialise screen elements ---
         self.width_input = create_spin_box(value=config.boundary.width, min=0.0, max=10000.0)
@@ -107,10 +109,11 @@ class PlanningPage(QWidget):
         main_layout.addWidget(self.view, stretch=3)
         main_layout.addWidget(side_panel, stretch=1)
 
-        self.update_polygon()
-
         self.view.pose_selected.connect(self._pose_selected)
         self.view.pose_invalid.connect(self._pose_invalid)
+
+        # Identity (not value) of the plan last sent via upload_route()
+        self._uploaded_plan = None
 
     def update_polygon(self) -> None:
         self.view.set_boundary(self.width_input.value(), self.length_input.value())
@@ -174,37 +177,61 @@ class PlanningPage(QWidget):
         self.user_config.has_coverage_plan = True
         self.plan_status.setText(f"Path generated ({len(waypoints)} waypoints)")
         self.plan_status.setStyleSheet("color: #4caf50;")
-        self.view.set_path([(x, y) for x, y, _ in waypoints], 0.5)  # TODO: vacuum width
+        self.view.set_path(waypoints)
 
     def upload_map(self) -> None:
         if not self.state.control_connected:
             self.ui_events.error.emit("No IP connection to robot. Cannot upload map.")
-            return
+            return False
 
         self.update_user_config()
-        msg = {
-            "type": "upload_map",
-            "boundary": {
-                "width": self.user_config.boundary.width,
-                "length": self.user_config.boundary.length,
-            },
-        }
-        asyncio.create_task(self.state.queue.put(msg))
+        asyncio.create_task(self.state.queue.put(self.user_config.map_msg()))
+        return True
 
     def upload_route(self) -> None:
         if not self.state.control_connected:
             self.ui_events.error.emit("No IP connection to robot. Cannot upload route.")
-            return
+            return False
 
         if not self.user_config.has_coverage_plan:
             self.ui_events.error.emit("A coverage path must be generated before it can be uploaded.")
-            return
+            return False
 
-        msg = {
-            "type": "upload_route",
-            "waypoints": [{"x": x, "y": y, "yaw": yaw} for x, y, yaw in self.user_config.coverage_plan],
-        }
-        asyncio.create_task(self.state.queue.put(msg))
+        asyncio.create_task(self.state.queue.put(self.user_config.route_msg()))
+        self._uploaded_plan = self.user_config.coverage_plan
+        return True
+
+    def has_unuploaded_plan(self) -> bool:
+        return self.user_config.has_coverage_plan and self.user_config.coverage_plan is not self._uploaded_plan
+
+    def confirm_navigate_away(self) -> bool:
+        """True if navigation should proceed, False if the user chose to stay."""
+        if not self.has_unuploaded_plan():
+            return True
+
+        box = QMessageBox(self)
+        box.setWindowTitle("Unsaved Route")
+        box.setText(
+            "You have a generated route that hasn't been uploaded to the robot.\n\n"
+            "What would you like to do before leaving this page?"
+        )
+        upload_btn = box.addButton("Upload", QMessageBox.ButtonRole.AcceptRole)
+        save_btn = box.addButton("Save", QMessageBox.ButtonRole.ActionRole)
+        discard_btn = box.addButton("Discard", QMessageBox.ButtonRole.DestructiveRole)
+        cancel_btn = box.addButton(QMessageBox.StandardButton.Cancel)
+        box.setDefaultButton(cancel_btn)
+        box.exec()
+
+        clicked = box.clickedButton()
+        if clicked is upload_btn:
+            return self.upload_map() and self.upload_route()
+        elif clicked is save_btn:
+            self.save_user_config()
+            return True
+        elif clicked is discard_btn:
+            return True
+        else:
+            return False  # Cancel (or dialog dismissed) — stay on this page
 
     def _pose_invalid(self) -> None:
         self.ui_events.error.emit("Starting position must be inside the boundary.")

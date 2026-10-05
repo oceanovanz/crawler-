@@ -17,16 +17,11 @@ class SonarWidget(QWidget):
         self.online = False
 
         # sonar history
-        self.measurements = deque(maxlen=360)
-
-        # Revolution tracking
-        self.rev_start_time = None
+        self.measurements = deque(maxlen=180)
         self.prev_timestamp = None
-        self.revolution_periods = deque(maxlen=5)
-        self.spr = 0.0
 
         # fade configuration
-        self.fade_duration_ms = 5000
+        self.fade_duration_ms = 1000
         self.fade_timer = QTimer(self)
         self.fade_timer.timeout.connect(self.update)
         self.fade_timer.start(33)  # ~30 FPS
@@ -38,14 +33,6 @@ class SonarWidget(QWidget):
 
         if angle is None:
             return
-
-        # Calculate revolutions per second
-        if int(angle) == 90 and timestamp > 0:
-            if self.rev_start_time is not None:
-                dt = (timestamp - self.rev_start_time) / 1000
-                self.revolution_periods.append(dt)
-                self.spr = sum(self.revolution_periods) / len(self.revolution_periods)
-            self.rev_start_time = timestamp
 
         # Store measurement
         self.measurements.append((angle, distance, timestamp))
@@ -130,8 +117,3 @@ class SonarWidget(QWidget):
             r = radius * i / 4
             d = self.max_distance * i / 4
             painter.drawText(int(cx + 2), int(cy - r - 2), f"{d:.1f} m")
-
-        # Revolution period
-        painter.setPen(QColor("#58d68d"))
-        painter.setFont(QFont(painter.font().family(), 8))
-        painter.drawText(8, 18, f"{self.spr:.2f} s/rev")

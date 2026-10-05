@@ -16,7 +16,7 @@ from PySide6.QtWidgets import (
 from state import State
 from connection_manager import ConnectionManager
 
-from .styling import create_divider
+from .styling import create_divider, create_combo_box
 from .popups import UIEvents
 from .hud_widget import ImuHudWidget
 from .axis_gauge_widget import AxisGauge
@@ -94,8 +94,7 @@ class ControlPage(QWidget):
         self.arm_button.setFixedHeight(22)
         self.arm_button.clicked.connect(self._on_arm_toggle)
 
-        self.mode_dropdown = QComboBox()
-        self.mode_dropdown.addItems(["MANUAL", "AUTO"])
+        self.mode_dropdown = create_combo_box(["MANUAL", "AUTO"], "MANUAL")
         self.mode_dropdown.currentTextChanged.connect(self._on_mode_changed)
 
         self.stop_route_button = QPushButton("Stop Route")
@@ -131,9 +130,8 @@ class ControlPage(QWidget):
         control_layout.setSpacing(8)
 
         arm_row = QHBoxLayout()
-        arm_row.addWidget(self.arm_label)
-        arm_row.addWidget(self.arm_button)
-        arm_row.addStretch()
+        arm_row.addWidget(self.arm_label, stretch=2)
+        arm_row.addWidget(self.arm_button, stretch=1)
         control_layout.addLayout(arm_row)
 
         mode_row = QHBoxLayout()

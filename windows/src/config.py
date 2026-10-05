@@ -58,7 +58,7 @@ class UserConfiguration:
     current_pose: np.ndarray = field(default_factory=lambda: np.array([np.nan, np.nan, np.nan], dtype=float))
 
     has_coverage_plan: bool = False
-    coverage_plan: dict = field(default_factory=dict)
+    coverage_plan: list = field(default_factory=list)  # List of waypoints, each waypoint is a tuple (x, y, yaw)
 
     def has_pose(self) -> bool:
         pose = self.current_pose
@@ -68,18 +68,16 @@ class UserConfiguration:
         x, y, yaw = self.current_pose
         return {"type": "current_pose", "pose": {"x": x, "y": y, "yaw": yaw}}
 
-    def plan_msg(self) -> str:
+    def map_msg(self) -> str:
         return {
-            "type": "plan",
-            "boundary": {
-                "width": self.boundary.width,
-                "length": self.boundary.length,
-            },
-            "navigation": {
-                "route_type": self.navigation.route_type,
-                "sweep_spacing": self.navigation.sweep_spacing,
-                "safety_margin": self.navigation.safety_margin,
-            },
+            "type": "upload_map",
+            "boundary": {"width": self.boundary.width, "length": self.boundary.length},
+        }
+
+    def route_msg(self) -> str:
+        return {
+            "type": "upload_route",
+            "waypoints": [{"x": x, "y": y, "yaw": yaw} for x, y, yaw in self.coverage_plan],
         }
 
 
@@ -116,10 +114,12 @@ def load_user_config() -> UserConfiguration:
             config.navigation.sweep_spacing = float(navigation["sweep_spacing"])
         if "safety_margin" in navigation:
             config.navigation.safety_margin = float(navigation["safety_margin"])
+        if "robot_radius" in navigation:
+            config.navigation.robot_radius = float(navigation["robot_radius"])
         if "has_coverage_plan" in navigation:
             config.has_coverage_plan = bool(navigation["has_coverage_plan"])
         if "coverage_plan" in navigation:
-            config.coverage_plan = dict(navigation["coverage_plan"])
+            config.coverage_plan = list(navigation["coverage_plan"])
 
     except (OSError, json.JSONDecodeError, ValueError, TypeError) as exc:
         print(f"Failed to load user configuration: {exc}")
@@ -142,6 +142,7 @@ def save_user_config(config: UserConfiguration) -> bool:
                 "route_type": config.navigation.route_type,
                 "sweep_spacing": config.navigation.sweep_spacing,
                 "safety_margin": config.navigation.safety_margin,
+                "robot_radius": config.navigation.robot_radius,
                 "has_coverage_plan": config.has_coverage_plan,
                 "coverage_plan": config.coverage_plan,
             },

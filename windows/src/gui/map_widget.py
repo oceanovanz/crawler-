@@ -104,7 +104,7 @@ class MapWidget(QWidget):
 
     def _draw_robot(self, painter: QPainter, draw_rect: QRectF) -> None:
         pose = self.state.pose
-        if pose is None or self._map_pixmap is None:
+        if not pose or self._map_pixmap is None:
             return
 
         px, py = self._world_to_pixel(pose["position"]["x"], pose["position"]["y"])

@@ -8,13 +8,7 @@ from datetime import datetime
 from websockets.asyncio.client import connect
 
 from state import State
-from config import (
-    CONTROL_PORT,
-    VIDEO_PORT,
-    RECONNECT_DELAY_S,
-    COMMAND_RATE_HZ,
-    UserConfiguration,
-)
+from config import CONTROL_PORT, VIDEO_PORT, RECONNECT_DELAY_S, COMMAND_RATE_HZ, UserConfiguration
 
 
 class ConnectionManager:
@@ -86,14 +80,16 @@ class ConnectionManager:
             pose_msg = self.user_config.pose_msg()
             await self.send(pose_msg)
 
-        plan_msg = self.user_config.plan_msg()
-        await self.send(plan_msg)
+        if self.user_config.has_coverage_plan:
+            map_msg = self.user_config.map_msg()
+            route_msg = self.user_config.route_msg()
+            await self.send(map_msg)
+            await self.send(route_msg)
 
     async def set_pi_ip(self, ip: str) -> None:
         """Change the crawler IP and reconnect both WebSocket connections."""
 
         ip = ip.strip()
-
         if ip == self.user_config.pi_ip:
             return
 
