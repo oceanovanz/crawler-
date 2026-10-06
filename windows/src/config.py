@@ -10,10 +10,6 @@ DEFAULT_RECORD_DIR = Path.home() / "OceanovaCrawler" / "recordings"
 # --- Application constants ---
 CONTROL_PORT = 8765
 VIDEO_PORT = 8766
-
-MAX_LINEAR_SPEED = 0.5  # m/s
-MAX_ANGULAR_SPEED = 1.0  # rad/s
-MAX_MOTOR_COMMAND = 1000
 GAMEPAD_DEADZONE = 0.12
 COMMAND_RATE_HZ = 20.0
 TELEMETRY_OFFLINE_MS = 1000
@@ -21,6 +17,12 @@ RECONNECT_DELAY_S = 1.0
 
 THROTTLE_SIGN = 1.0
 STEERING_SIGN = 1.0
+
+# --- Robot configuration ---
+MAX_LINEAR_SPEED = 0.5  # m/s
+MAX_ANGULAR_SPEED = 1.0  # rad/s
+ROBOT_RADIUS = 0.25  # meters; used for wall clearance in planning
+MAX_MOTOR_COMMAND = 1000
 
 # --- User configuration ---
 CONFIG_DIR = Path.home() / "OceanovaCrawler"
@@ -31,7 +33,7 @@ DEFAULT_BOUNDARY_LENGTH = 0.0
 
 DEFAULT_ROUTE_TYPE = "BOUSTROPHEDON"
 DEFAULT_SWEEP_SPACING = 0.5
-DEFAULT_SAFETY_MARGIN = 0.0
+DEFAULT_SAFETY_MARGIN = 0.1
 
 
 @dataclass
@@ -45,7 +47,7 @@ class NavigationConfiguration:
     route_type: str = DEFAULT_ROUTE_TYPE
     sweep_spacing: float = DEFAULT_SWEEP_SPACING
     safety_margin: float = DEFAULT_SAFETY_MARGIN
-    robot_radius: float = 0.25  # meters; used for wall clearance in planning
+    robot_radius: float = ROBOT_RADIUS
 
 
 @dataclass

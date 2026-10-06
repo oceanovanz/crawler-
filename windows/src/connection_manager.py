@@ -283,11 +283,22 @@ class ConnectionManager:
                                 await self.send_startup_data()
 
                             elif kind == "ack":
-                                print("CONTROL:", data)
-                                if data.get("command", None) == "upload_map":
+                                command = data.get("command", None)
+                                if command == "upload_map":
                                     self.state.map_uploaded = True
-                                elif data.get("command", None) == "upload_route":
+                                    self.ui_events.emit_notification("Map uploaded successfully")
+                                elif command == "upload_route":
                                     self.state.route_uploaded = True
+                                    self.state.route = self.user_config.coverage_plan
+                                    self.ui_events.emit_notification("Route uploaded successfully")
+                                elif command == "current_pose":
+                                    self.ui_events.notification.emit("Pose uploaded successfully")
+                                elif command == "start_route":
+                                    self.ui_events.notification.emit("Robot reports successful route start")
+                                elif command == "cancel_route":
+                                    self.ui_events.notification.emit("Robot reports successful route cancellation")
+                                elif command == "stop":
+                                    self.ui_events.notification.emit("Robot reports successful stop")
 
                     async def sender():
                         while self.state.running:
@@ -371,14 +382,13 @@ class ConnectionManager:
         period = 1.0 / COMMAND_RATE_HZ
 
         while self.state.running:
-
             t0 = time.monotonic()
 
             # send empty command to avoid timeout while waiting for arming
             if self.state.arm_requested:
                 await self.send({"type": "motor", "steering": 0, "throttle": 0})
 
-            elif self.state.can_drive():
+            elif self.state.can_drive_manual():
                 await self.send({"type": "motor", "steering": self.state.steering, "throttle": self.state.throttle})
 
             await asyncio.sleep(max(0.0, period - (time.monotonic() - t0)))

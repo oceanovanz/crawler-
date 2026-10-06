@@ -27,6 +27,7 @@ async def async_main(app: QApplication) -> None:
     await connection.start()
 
     window = MainWindow(state, user_config, connection, controller, ui_events)
+    ui_events.attach_to(window)
     window.show()
 
     try:

@@ -43,7 +43,7 @@ class PlanningPage(QWidget):
             value=config.navigation.robot_radius, min=0.01, max=10.0, tip="robot radius, used for wall clearance"
         )
 
-        self.select_pose_button = QPushButton("Select intial pose")
+        self.select_pose_button = QPushButton("Select pose")
         self.select_pose_button.setToolTip("Click and drag on the map to select the robot's position and orientation.")
         self.select_pose_button.clicked.connect(self.begin_pose_selection)
 
@@ -52,7 +52,7 @@ class PlanningPage(QWidget):
         # self.select_roi_button.clicked.connect(self.begin_roi_selection)
 
         self.plan_status = QLabel("No path generated")
-        self.plan_button = QPushButton("Generate Plan")
+        self.plan_button = QPushButton("Generate Route")
         self.plan_button.clicked.connect(self.generate_route)
 
         self.upload_map_button = QPushButton("Upload Map")
@@ -80,6 +80,9 @@ class PlanningPage(QWidget):
         path_form.addRow("Safety margin:", self.safety_margin)
         path_form.addRow("Robot radius:", self.robot_radius)
 
+        upload_title = QLabel("TRANSMIT TO ROBOT")
+        upload_title.setObjectName("sectionTitle")
+
         save_button = QPushButton("Save Configuration")
         save_button.clicked.connect(self.save_user_config)
 
@@ -93,11 +96,14 @@ class PlanningPage(QWidget):
         side_layout.addWidget(path_title)
         side_layout.addLayout(path_form)
         side_layout.addWidget(self.plan_status)
-        side_layout.addStretch()
-        side_layout.addWidget(self.select_pose_button)
         side_layout.addWidget(self.plan_button)
+        side_layout.addWidget(create_divider())
+        side_layout.addWidget(upload_title)
+        side_layout.addWidget(self.select_pose_button)
         side_layout.addWidget(self.upload_map_button)
         side_layout.addWidget(self.upload_route_button)
+        side_layout.addWidget(create_divider())
+        side_layout.addStretch()
         side_layout.addWidget(save_button)
 
         side_panel = QWidget()
@@ -119,6 +125,9 @@ class PlanningPage(QWidget):
         self.view.set_boundary(self.width_input.value(), self.length_input.value())
 
     def begin_pose_selection(self) -> None:
+        if not self.state.control_connected:
+            self.ui_events.error.emit("No IP connection to robot.\nCannot upload pose.")
+            return
         self.view.begin_pose_selection()
         self.select_pose_button.setText("Drag on map...")
 
@@ -181,7 +190,7 @@ class PlanningPage(QWidget):
 
     def upload_map(self) -> None:
         if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot upload map.")
+            self.ui_events.error.emit("No IP connection to robot.\nCannot upload map.")
             return False
 
         self.update_user_config()
@@ -189,8 +198,9 @@ class PlanningPage(QWidget):
         return True
 
     def upload_route(self) -> None:
+        self.save_user_config()
         if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot upload route.")
+            self.ui_events.error.emit("No IP connection to robot.\nCannot upload route.")
             return False
 
         if not self.user_config.has_coverage_plan:
@@ -240,4 +250,4 @@ class PlanningPage(QWidget):
         self.user_config.current_pose = np.array([x, y, yaw], dtype=float)
         msg = self.user_config.pose_msg()
         asyncio.create_task(self.state.queue.put(msg))
-        self.select_pose_button.setText("Select current pose")
+        self.select_pose_button.setText("Select pose")

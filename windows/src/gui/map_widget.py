@@ -1,15 +1,64 @@
 import math
+from collections import deque
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import QColor, QImage, QPainter, QPixmap
-from PySide6.QtWidgets import QWidget
+from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap
+from PySide6.QtWidgets import QCheckBox, QHBoxLayout, QWidget
 
 UNKNOWN_COLOR = QColor(120, 120, 120)
-ROBOT_COLOR = QColor(220, 30, 30)
-ROBOT_RADIUS_PX = 6
+ROBOT_COLOR = QColor(30, 30, 220)
+ROBOT_RADIUS_PX = 10
 ROBOT_HEADING_LENGTH_PX = 16
+
+BACKGROUND_COLOR = QColor(50, 50, 50)
+GRID_COLOR = QColor(100, 100, 100)
+GRID_LABEL_COLOR = QColor(170, 170, 170)
+GRID_MARGIN_M = 1.0  # how far the grid extends past the map boundary
+GRID_TARGET_PX = 60.0  # aim for roughly this many pixels between grid lines
+
+TRACE_COLOR = QColor(40, 200, 80, 140)  # wide, semi-transparent green
+TRACE_WIDTH_PX = 6.0
+TRACE_MIN_STEP_M = 0.05  # don't record a new trace point closer than this to the last one
+MAX_TRACE_POINTS = 5000
+
+ROUTE_LINE_COLOR = QColor(220, 40, 40)
+ROUTE_LINE_WIDTH_PX = 1.5
+ROUTE_POINT_COLOR = QColor(220, 40, 40)
+ROUTE_POINT_RADIUS_PX = 3.0
+
+
+def _nice_grid_spacing(scale_px_per_m: float, target_px: float = GRID_TARGET_PX) -> float:
+    """Pick a 'nice' (1/2/5 x 10^n) grid spacing in metres so lines land roughly target_px apart."""
+    if scale_px_per_m <= 0:
+        return 1.0
+    raw = target_px / scale_px_per_m
+    magnitude = 10 ** math.floor(math.log10(raw))
+    for mult in (1, 2, 5, 10):
+        candidate = magnitude * mult
+        if candidate >= raw:
+            return candidate
+    return magnitude * 10
+
+
+@dataclass
+class _ViewTransform:
+    """World (map frame, metres) -> screen (widget pixels), covering a padded view box."""
+
+    scale: float  # pixels per metre
+    vx_min: float
+    vx_max: float
+    vy_min: float
+    vy_max: float
+    offset_x: float
+    offset_y: float
+
+    def to_screen(self, wx: float, wy: float) -> QPointF:
+        sx = self.offset_x + (wx - self.vx_min) * self.scale
+        sy = self.offset_y + (self.vy_max - wy) * self.scale  # world +y is "up"; screen +y is down
+        return QPointF(sx, sy)
 
 
 class MapWidget(QWidget):
@@ -26,7 +75,31 @@ class MapWidget(QWidget):
         self._origin_x = 0.0
         self._origin_y = 0.0
 
+        # Robot trace: recorded locally, capped, and only grown when the
+        # robot has actually moved since the last recorded point.
+        self._trace: deque[tuple[float, float]] = deque(maxlen=MAX_TRACE_POINTS)
+
         self.setMinimumSize(300, 300)
+
+        # --- Overlay controls (toggle trace / route) ---
+        self.trace_checkbox = QCheckBox("Trace")
+        self.trace_checkbox.setChecked(True)
+        self.trace_checkbox.stateChanged.connect(lambda _: self.update())
+
+        self.route_checkbox = QCheckBox("Route")
+        self.route_checkbox.setChecked(True)
+        self.route_checkbox.stateChanged.connect(lambda _: self.update())
+
+        overlay = QWidget(self)
+        overlay.setStyleSheet("background-color: rgba(0, 0, 0, 140); border-radius: 4px;" "QCheckBox { color: white; }")
+        overlay_layout = QHBoxLayout(overlay)
+        overlay_layout.setContentsMargins(6, 2, 6, 2)
+        overlay_layout.setSpacing(10)
+        overlay_layout.addWidget(self.trace_checkbox)
+        overlay_layout.addWidget(self.route_checkbox)
+        overlay.move(8, 8)
+        overlay.adjustSize()
+        self._overlay = overlay
 
         if self.state.map:
             self.update_map()
@@ -77,11 +150,13 @@ class MapWidget(QWidget):
     def paintEvent(self, _event) -> None:
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = self.rect()
+        rect = QRectF(self.rect())
 
         if self.state.has_new_map:
             self.update_map()
             self.state.has_new_map = False
+
+        self._record_trace_point()
 
         if self._map_pixmap is None:
             painter.fillRect(rect, Qt.GlobalColor.darkGray)
@@ -89,47 +164,156 @@ class MapWidget(QWidget):
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, "Waiting for map...")
             return
 
-        draw_rect = self._fit_rect(rect, self._map_pixmap.width(), self._map_pixmap.height())
+        transform = self._compute_view_transform(rect)
+
+        painter.fillRect(rect, BACKGROUND_COLOR)
+        self._draw_grid(painter, transform)
+        self._draw_map_pixmap(painter, transform)
+
+        if self.route_checkbox.isChecked():
+            self._draw_route(painter, transform)
+
+        if self.trace_checkbox.isChecked():
+            self._draw_trace(painter, transform)
+
+        self._draw_robot(painter, transform)
+
+    # ------------------------------------------------------------------
+    # World <-> screen transform
+    # ------------------------------------------------------------------
+
+    def _compute_view_transform(self, rect: QRectF) -> _ViewTransform:
+        map_world_w = self._map_width * self._resolution
+        map_world_h = self._map_height * self._resolution
+
+        vx_min = self._origin_x - GRID_MARGIN_M
+        vx_max = self._origin_x + map_world_w + GRID_MARGIN_M
+        vy_min = self._origin_y - GRID_MARGIN_M
+        vy_max = self._origin_y + map_world_h + GRID_MARGIN_M
+
+        view_w = max(vx_max - vx_min, 1e-6)
+        view_h = max(vy_max - vy_min, 1e-6)
+        scale = min(rect.width() / view_w, rect.height() / view_h)
+
+        draw_w = view_w * scale
+        draw_h = view_h * scale
+        offset_x = rect.x() + (rect.width() - draw_w) / 2.0
+        offset_y = rect.y() + (rect.height() - draw_h) / 2.0
+
+        return _ViewTransform(
+            scale=scale,
+            vx_min=vx_min,
+            vx_max=vx_max,
+            vy_min=vy_min,
+            vy_max=vy_max,
+            offset_x=offset_x,
+            offset_y=offset_y,
+        )
+
+    # ------------------------------------------------------------------
+    # Drawing
+    # ------------------------------------------------------------------
+
+    def _draw_map_pixmap(self, painter: QPainter, t: _ViewTransform) -> None:
+        map_world_w = self._map_width * self._resolution
+        map_world_h = self._map_height * self._resolution
+        top_left = t.to_screen(self._origin_x, self._origin_y + map_world_h)
+        bottom_right = t.to_screen(self._origin_x + map_world_w, self._origin_y)
+        draw_rect = QRectF(top_left, bottom_right)
         painter.drawPixmap(draw_rect, self._map_pixmap, QRectF(self._map_pixmap.rect()))
 
-        self._draw_robot(painter, draw_rect)
+    def _draw_grid(self, painter: QPainter, t: _ViewTransform) -> None:
+        if t.scale <= 0:
+            return
+        spacing = _nice_grid_spacing(t.scale)
 
-    def _fit_rect(self, outer: QRectF, content_w: int, content_h: int) -> QRectF:
-        """Largest rect that fits `outer`, preserving the map's aspect ratio, centered."""
-        scale = min(outer.width() / content_w, outer.height() / content_h)
-        w, h = content_w * scale, content_h * scale
-        x = outer.x() + (outer.width() - w) / 2.0
-        y = outer.y() + (outer.height() - h) / 2.0
-        return QRectF(x, y, w, h)
+        pen = QPen(GRID_COLOR)
+        pen.setWidth(1)
+        painter.setPen(pen)
 
-    def _draw_robot(self, painter: QPainter, draw_rect: QRectF) -> None:
-        pose = self.state.pose
-        if not pose or self._map_pixmap is None:
+        x = math.ceil(t.vx_min / spacing) * spacing
+        while x <= t.vx_max:
+            painter.drawLine(t.to_screen(x, t.vy_max), t.to_screen(x, t.vy_min))
+            x += spacing
+
+        y = math.ceil(t.vy_min / spacing) * spacing
+        while y <= t.vy_max:
+            painter.drawLine(t.to_screen(t.vx_min, y), t.to_screen(t.vx_max, y))
+            y += spacing
+
+        # Scale/dimension labels along the bottom and left edges of the view.
+        painter.setPen(GRID_LABEL_COLOR)
+        x = math.ceil(t.vx_min / spacing) * spacing
+        while x <= t.vx_max:
+            p = t.to_screen(x, t.vy_min)
+            painter.drawText(QPointF(p.x() + 3, p.y() - 4), f"{x:g}m")
+            x += spacing
+
+        y = math.ceil(t.vy_min / spacing) * spacing
+        while y <= t.vy_max:
+            p = t.to_screen(t.vx_min, y)
+            painter.drawText(QPointF(p.x() + 3, p.y() - 4), f"{y:g}m")
+            y += spacing
+
+    def _draw_route(self, painter: QPainter, t: _ViewTransform) -> None:
+        route = getattr(self.state, "route", None)
+        if not route:
             return
 
-        px, py = self._world_to_pixel(pose["position"]["x"], pose["position"]["y"])
+        points = [t.to_screen(x, y) for x, y, _ in route]
+        if not points:
+            return
 
-        scale_x = draw_rect.width() / self._map_width
-        scale_y = draw_rect.height() / self._map_height
-        screen_x = draw_rect.x() + px * scale_x
-        screen_y = draw_rect.y() + py * scale_y
+        pen = QPen(ROUTE_LINE_COLOR)
+        pen.setWidthF(ROUTE_LINE_WIDTH_PX)
+        painter.setPen(pen)
+        for a, b in zip(points, points[1:]):
+            painter.drawLine(a, b)
 
-        painter.setBrush(ROBOT_COLOR)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(ROUTE_POINT_COLOR)
+        for p in points:
+            painter.drawEllipse(p, ROUTE_POINT_RADIUS_PX, ROUTE_POINT_RADIUS_PX)
+
+    def _record_trace_point(self) -> None:
+        pose = self.state.pose
+        if not pose:
+            return
+        x, y = pose["position"]["x"], pose["position"]["y"]
+        if self._trace and math.hypot(x - self._trace[-1][0], y - self._trace[-1][1]) < TRACE_MIN_STEP_M:
+            return
+        self._trace.append((x, y))
+
+    def _draw_trace(self, painter: QPainter, t: _ViewTransform) -> None:
+        if len(self._trace) < 2:
+            return
+
+        points = [t.to_screen(x, y) for x, y in self._trace]
+        pen = QPen(TRACE_COLOR)
+        pen.setWidthF(TRACE_WIDTH_PX)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for a, b in zip(points, points[1:]):
+            painter.drawLine(a, b)
+
+    def _draw_robot(self, painter: QPainter, t: _ViewTransform) -> None:
+        pose = self.state.pose
+        if not pose:
+            return
+
+        screen = t.to_screen(pose["position"]["x"], pose["position"]["y"])
+
         painter.setPen(ROBOT_COLOR)
-        painter.drawEllipse(QPointF(screen_x, screen_y), ROBOT_RADIUS_PX, ROBOT_RADIUS_PX)
+        painter.setBrush(ROBOT_COLOR)
+        painter.drawEllipse(screen, ROBOT_RADIUS_PX, ROBOT_RADIUS_PX)
 
         # Image y grows downward while yaw is measured counter-clockwise in
         # the map frame (y grows "up"), so negate yaw for the on-screen heading.
         yaw = pose["yaw"]
-        heading_x = screen_x + ROBOT_HEADING_LENGTH_PX * math.cos(-yaw)
-        heading_y = screen_y + ROBOT_HEADING_LENGTH_PX * math.sin(-yaw)
-        painter.drawLine(QPointF(screen_x, screen_y), QPointF(heading_x, heading_y))
-
-    def _world_to_pixel(self, world_x: float, world_y: float) -> tuple[float, float]:
-        """World (map frame, meters) -> pixel coords in the cached (pre-flip) map image."""
-        col = (world_x - self._origin_x) / self._resolution
-        row = (world_y - self._origin_y) / self._resolution
-        # The pixmap was flipped vertically in update_map(), so row 0 (bottom
-        # of the world) is now at the bottom of the image, not the top.
-        pixel_y = self._map_height - row
-        return col, pixel_y
+        heading = QPointF(
+            screen.x() + ROBOT_HEADING_LENGTH_PX * math.cos(-yaw),
+            screen.y() + ROBOT_HEADING_LENGTH_PX * math.sin(-yaw),
+        )
+        painter.drawLine(screen, heading)

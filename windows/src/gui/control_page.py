@@ -223,7 +223,7 @@ class ControlPage(QWidget):
 
     def _on_arm_toggle(self) -> None:
         if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot arm/disarm.")
+            self.ui_events.error.emit("No IP connection to robot.\nCannot arm/disarm.")
             return
 
         if self.state.is_armed():
@@ -238,7 +238,7 @@ class ControlPage(QWidget):
         mode = text.lower()
 
         if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot change mode.")
+            self.ui_events.error.emit("No IP connection to robot.\nCannot change mode.")
             self._sync_mode_dropdown()
             return
 
@@ -253,19 +253,19 @@ class ControlPage(QWidget):
 
     def _on_stop_route(self) -> None:
         if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot stop route.")
+            self.ui_events.error.emit("No IP connection to robot.\nCannot stop route.")
             return
         asyncio.create_task(self.state.queue.put({"type": "cancel_route"}))
 
     def _on_resume_route(self) -> None:
         if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot resume route.")
+            self.ui_events.error.emit("No IP connection to robot.\nCannot resume route.")
             return
         asyncio.create_task(self.state.queue.put({"type": "resume_route"}))
 
     def _on_emergency_stop(self) -> None:
         if not self.state.control_connected:
-            self.ui_events.error.emit("No IP connection to robot. Cannot send emergency stop.")
+            self.ui_events.error.emit("No IP connection to robot.\nCannot send emergency stop.")
             return
         asyncio.create_task(self.state.queue.put({"type": "stop"}))
 

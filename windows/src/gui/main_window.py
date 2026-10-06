@@ -12,7 +12,7 @@ from connection_manager import ConnectionManager
 from controller import DualSense
 from config import UserConfiguration
 
-from .popups import UIEvents, ErrorPopup
+from .popups import UIEvents
 from .control_page import ControlPage
 from .planning_page import PlanningPage
 from .settings_dialog import SettingsDialog
@@ -34,6 +34,7 @@ class MainWindow(QMainWindow):
         self.user_config = user_config
         self.connection = connection
         self.controller = controller
+        self.ui_events = ui_events
 
         self.setWindowTitle("Oceanova Crawler")
         self.resize(1300, 720)
@@ -54,10 +55,6 @@ class MainWindow(QMainWindow):
         central_layout.addWidget(self.top_bar)
         central_layout.addWidget(self.stack)
         self.setCentralWidget(central_widget)
-
-        # Error popup
-        self.error_popup = ErrorPopup(self)
-        ui_events.error.connect(self.error_popup.show_error)
 
         # GUI update timer
         self.gui_timer = QTimer(self)
@@ -178,9 +175,7 @@ class MainWindow(QMainWindow):
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
-
-        if hasattr(self, "error_popup"):
-            self.error_popup.position_popup()
+        self.ui_events.position_popups()
 
     def changeEvent(self, event: QEvent) -> None:
         super().changeEvent(event)

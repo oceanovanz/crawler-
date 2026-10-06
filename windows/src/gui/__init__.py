@@ -1,4 +1,4 @@
 from .main_window import MainWindow
-from .popups import UIEvents, ErrorPopup
+from .popups import UIEvents
 
-__all__ = ["MainWindow", "UIEvents", "ErrorPopup"]
+__all__ = ["MainWindow", "UIEvents"]

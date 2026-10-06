@@ -1,5 +1,4 @@
 import asyncio
-import time
 import numpy as np
 from typing import Optional
 from dataclasses import dataclass, field
@@ -20,14 +19,17 @@ class State:
     video_connected: bool = False
     controller_connected: bool = False
 
-    # Crawler state
+    # Navigational state
     map_uploaded: bool = False
     route_uploaded: bool = False
+    route: list = field(default_factory=list)  # List of waypoints, each waypoint is a tuple (x, y, yaw)
+    has_new_map: bool = False  # True if a new map has been received from the robot since the last upload
+    map: dict = field(default_factory=dict)  # The ROS2 map representation, as received from the robot
+    pose: dict = field(default_factory=dict)  # The ROS2 estimated  robot pose
+
+    # Crawler state
     telemetry: dict = field(default_factory=dict)
-    pose: dict = field(default_factory=dict)
     system: dict = field(default_factory=dict)
-    map: dict = field(default_factory=dict)
-    has_new_map: bool = False
     frame: Optional[np.ndarray] = None
     rtt_ms: Optional[float] = None
 
@@ -60,5 +62,11 @@ class State:
         age = self.system.get("telemetry_age_ms", None)
         return age is not None and age < TELEMETRY_OFFLINE_MS
 
-    def can_drive(self) -> bool:
-        return self.control_connected and self.controller_connected and self.is_telemetry_fresh() and self.is_armed()
+    def can_drive_manual(self) -> bool:
+        return (
+            self.get_mode() == "manual"
+            and self.control_connected
+            and self.controller_connected
+            and self.is_telemetry_fresh()
+            and self.is_armed()
+        )
